@@ -1,0 +1,10 @@
+# Phase 1 (collection + curation). Prefer:  pip install -e .
+# Optional extras live in pyproject.toml:  pip install -e ".[ocr]"
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+PyYAML>=6.0
+pandas>=2.0.0
+numpy>=1.24.0
+Pillow>=10.0.0
+tqdm>=4.66.0

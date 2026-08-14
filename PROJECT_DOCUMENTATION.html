@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Project Documentation — Lightweight Multimodal Detection of Fake Investment Promotions</title>
+<style>
+  :root{
+    --bg:#fbfaf9; --panel:#ffffff; --ink:#1c1a18; --muted:#6b6560;
+    --line:#e5e1dc; --accent:#8a5a2b; --accent-soft:#f5ede3;
+    --ok:#2f6b4f; --warn:#9a6b12; --danger:#9b3a2f;
+    --code-bg:#f4f2ef; --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#151312; --panel:#1e1b1a; --ink:#ece7e2; --muted:#a49c95;
+      --line:#332e2b; --accent:#d19a63; --accent-soft:#2a221b;
+      --ok:#6fbf95; --warn:#d9ad5a; --danger:#e0796a; --code-bg:#241f1d;
+    }
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth; scroll-padding-top:70px}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:920px; margin:0 auto; padding:0 24px 100px}
+
+  header.hero{
+    border-bottom:1px solid var(--line); background:var(--panel);
+    padding:52px 0 40px; margin-bottom:0;
+  }
+  header.hero .wrap{padding-bottom:0}
+  .eyebrow{
+    font:600 11px/1 var(--mono); letter-spacing:.14em; text-transform:uppercase;
+    color:var(--accent); margin-bottom:14px;
+  }
+  h1{font-size:31px; line-height:1.25; margin:0 0 14px; font-weight:650; letter-spacing:-.02em}
+  .sub{color:var(--muted); font-size:17px; margin:0 0 24px; max-width:70ch}
+  .meta{display:flex; flex-wrap:wrap; gap:10px}
+  .chip{
+    font:500 12px/1 var(--mono); padding:7px 11px; border-radius:999px;
+    border:1px solid var(--line); color:var(--muted); background:var(--bg);
+  }
+  .chip.ok{color:var(--ok); border-color:color-mix(in srgb,var(--ok) 35%,var(--line))}
+  .chip.warn{color:var(--warn); border-color:color-mix(in srgb,var(--warn) 35%,var(--line))}
+
+  nav.toc{
+    position:sticky; top:0; z-index:20; background:var(--bg);
+    backdrop-filter:blur(10px); border-bottom:1px solid var(--line); margin-bottom:44px;
+  }
+  nav.toc .wrap{display:flex; gap:20px; overflow-x:auto; padding-top:13px; padding-bottom:13px}
+  nav.toc a{
+    font:500 13px/1 inherit; color:var(--muted); text-decoration:none;
+    white-space:nowrap; padding-bottom:2px; border-bottom:2px solid transparent;
+  }
+  nav.toc a:hover{color:var(--ink); border-bottom-color:var(--accent)}
+
+  section{margin-bottom:60px; scroll-margin-top:70px}
+  h2{
+    font-size:23px; margin:0 0 6px; font-weight:640; letter-spacing:-.01em;
+    padding-top:8px;
+  }
+  h2 .num{font:600 13px/1 var(--mono); color:var(--accent); margin-right:10px}
+  h3{font-size:16px; margin:32px 0 8px; font-weight:640}
+  h4{font-size:14px; margin:22px 0 6px; font-weight:640; color:var(--muted)}
+  p{margin:0 0 14px}
+  .lede{color:var(--muted); margin-bottom:26px; font-size:15px}
+  ul,ol{margin:0 0 14px; padding-left:22px}
+  li{margin-bottom:6px}
+  code{font:13px/1.5 var(--mono); background:var(--code-bg); padding:2px 5px; border-radius:4px}
+  pre{
+    background:var(--code-bg); border:1px solid var(--line); border-radius:8px;
+    padding:15px 17px; overflow-x:auto; margin:0 0 18px;
+  }
+  pre code{background:none; padding:0; font-size:12.5px; line-height:1.6}
+
+  table{width:100%; border-collapse:collapse; margin:0 0 20px; font-size:14px}
+  th,td{text-align:left; padding:9px 11px; border-bottom:1px solid var(--line); vertical-align:top}
+  th{
+    font:600 11px/1.3 var(--mono); text-transform:uppercase; letter-spacing:.06em;
+    color:var(--muted);
+  }
+  td code{font-size:12px}
+  tbody tr:last-child td{border-bottom:none}
+  .num-col{font-variant-numeric:tabular-nums; text-align:right}
+
+  .card{
+    background:var(--panel); border:1px solid var(--line);
+    border-radius:10px; padding:20px 22px; margin:0 0 18px;
+  }
+  .card h3{margin-top:0}
+  .callout{
+    border-left:3px solid var(--accent); background:var(--accent-soft);
+    padding:15px 18px; border-radius:0 8px 8px 0; margin:0 0 18px;
+  }
+  .callout.danger{border-left-color:var(--danger); background:color-mix(in srgb,var(--danger) 8%,transparent)}
+  .callout.ok{border-left-color:var(--ok); background:color-mix(in srgb,var(--ok) 8%,transparent)}
+  .callout p:last-child{margin-bottom:0}
+  .callout .tag{
+    display:block; font:600 10px/1 var(--mono); letter-spacing:.12em;
+    text-transform:uppercase; margin-bottom:8px; color:var(--accent);
+  }
+  .callout.danger .tag{color:var(--danger)}
+  .callout.ok .tag{color:var(--ok)}
+
+  .decision{border:1px solid var(--line); border-radius:10px; padding:18px 20px; margin-bottom:16px}
+  .decision h3{margin:0 0 10px; font-size:15px}
+  .decision dl{margin:0; display:grid; grid-template-columns:auto 1fr; gap:6px 14px}
+  .decision dt{
+    font:600 10px/1.6 var(--mono); letter-spacing:.08em; text-transform:uppercase;
+    color:var(--muted); white-space:nowrap;
+  }
+  .decision dd{margin:0}
+
+  .diagram{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:24px; margin-bottom:20px; overflow-x:auto;
+  }
+  .diagram svg{display:block; margin:0 auto; max-width:100%; height:auto}
+
+  .files{font:13px/1.75 var(--mono); background:var(--code-bg);
+         border:1px solid var(--line); border-radius:8px; padding:18px; overflow-x:auto}
+  .files .dir{color:var(--accent); font-weight:600}
+  .files .cmt{color:var(--muted)}
+
+  footer{border-top:1px solid var(--line); padding-top:24px; color:var(--muted); font-size:13px}
+  .status-dot{display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:7px}
+  .status-dot.done{background:var(--ok)}
+  .status-dot.now{background:var(--warn)}
+  .status-dot.todo{background:var(--line); border:1px solid var(--muted)}
+  hr{border:none; border-top:1px solid var(--line); margin:34px 0}
+  .small{font-size:13px; color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">Minor Project &middot; Documentation</div>
+    <h1>A Lightweight Multimodal Model for Detecting Fake Investment Promotions</h1>
+    <p class="sub">
+      A complete record of what has been built, how it works, and the reasoning
+      behind each decision. Supervisor: Dr.&nbsp;Shivangi Surati.
+    </p>
+    <div class="meta">
+      <span class="chip ok">Phase&nbsp;1 pipeline complete</span>
+      <span class="chip">172 tests passing</span>
+      <span class="chip">4,663 lines Python</span>
+      <span class="chip warn">Awaiting first collection run</span>
+    </div>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="wrap">
+    <a href="#problem">Problem</a>
+    <a href="#design">System design</a>
+    <a href="#findings">Investigation</a>
+    <a href="#decisions">Decisions</a>
+    <a href="#modules">Modules</a>
+    <a href="#testing">Testing</a>
+    <a href="#problems">Open problems</a>
+    <a href="#roadmap">Roadmap</a>
+    <a href="#log">Change log</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<!-- ============================================================ -->
+<section id="problem">
+  <h2><span class="num">01</span>The problem</h2>
+  <p class="lede">Why a text-only classifier is structurally unable to solve this.</p>
+
+  <p>
+    Fraudulent investment promotions hide their claim <strong>inside the
+    image</strong>. A doctored profit-and-loss screenshot, a chart with a
+    truncated axis, a pasted SEBI or RBI logo, a borrowed photograph of a known
+    finance personality — the deceptive assertion is carried by pixels. The
+    visible caption stays vague and harmless: <em>"Check this out"</em>,
+    <em>"DM for details"</em>.
+  </p>
+  <p>
+    A text-only classifier sees only the harmless half. That is not a tuning
+    problem; the signal is not present in its input at all. This is the gap the
+    project targets.
+  </p>
+
+  <h3>Three modalities</h3>
+  <table>
+    <thead><tr><th>#</th><th>Modality</th><th>What it contributes</th><th>Encoder</th><th>Phase</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Image</td><td>Visual manipulation, forged logos, chart distortion</td><td>ViT / CLIP</td><td>2</td></tr>
+      <tr><td>2</td><td>Text</td><td>Caption <em>plus OCR of in-image text</em>, code-mixed Hindi/English</td><td>MuRIL / IndicBERT</td><td>2</td></tr>
+      <tr><td>3</td><td>Propagation</td><td>How a post travels channel to channel on Telegram</td><td>GNN (PyG)</td><td>3</td></tr>
+    </tbody>
+  </table>
+  <p>
+    A cross-attention layer fuses them. An ablation comparing text-only,
+    image-only and fused models measures what each modality actually
+    contributes, rather than assuming it.
+  </p>
+
+  <div class="callout">
+    <span class="tag">Empirical support</span>
+    <p>
+      The investigation in §03 found that the dominant Indian fraud pattern in
+      2024&ndash;26 is <strong>deepfake celebrity endorsement</strong> — a public
+      figure appearing to promote an investment platform. In every such case the
+      caption is innocuous and the deception lives entirely in the video frame.
+      That is direct evidence for the multimodal premise, not just an assumption.
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="design">
+  <h2><span class="num">02</span>System design</h2>
+  <p class="lede">Layered by pipeline stage, with one shared data contract.</p>
+
+  <p>
+    The system is organised as a linear pipeline. Each stage reads the previous
+    stage's output, writes its own, and is independently resumable. Every stage
+    speaks the same record type, so adding a source or an encoder never requires
+    touching the stages around it.
+  </p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 860 340" role="img" aria-label="Pipeline diagram">
+      <defs>
+        <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto">
+          <path d="M0,0 L7,3.2 L0,6.4 z" fill="#8a5a2b"/>
+        </marker>
+        <style>
+          .bx{fill:#ffffff;stroke:#e5e1dc;stroke-width:1.2;rx:8}
+          .bx-a{fill:#f5ede3;stroke:#d8c3a5;stroke-width:1.2;rx:8}
+          .t{font:600 12px ui-monospace,Menlo,monospace;fill:#1c1a18}
+          .s{font:11px -apple-system,sans-serif;fill:#6b6560}
+          .st{font:600 9.5px ui-monospace,monospace;fill:#8a5a2b;letter-spacing:.08em}
+          .ln{stroke:#8a5a2b;stroke-width:1.4;fill:none}
+          @media (prefers-color-scheme:dark){
+            .bx{fill:#1e1b1a;stroke:#332e2b} .bx-a{fill:#2a221b;stroke:#4a3a2a}
+            .t{fill:#ece7e2} .s{fill:#a49c95}
+          }
+        </style>
+      </defs>
+
+      <text x="12" y="18" class="st">STAGE 01</text>
+      <rect class="bx" x="8" y="26" width="152" height="66"/>
+      <text x="20" y="48" class="t">collection</text>
+      <text x="20" y="66" class="s">WordPress REST</text>
+      <text x="20" y="80" class="s">sitemap + ClaimReview</text>
+
+      <text x="188" y="18" class="st">STAGE 02/03</text>
+      <rect class="bx" x="184" y="26" width="152" height="66"/>
+      <text x="196" y="48" class="t">enrichment</text>
+      <text x="196" y="66" class="s">image fetch</text>
+      <text x="196" y="80" class="s">OCR + translit</text>
+
+      <text x="364" y="18" class="st">STAGE 04</text>
+      <rect class="bx-a" x="360" y="26" width="152" height="66"/>
+      <text x="372" y="48" class="t">curation</text>
+      <text x="372" y="66" class="s">filter, label</text>
+      <text x="372" y="80" class="s">deduplicate</text>
+
+      <text x="540" y="18" class="st">STAGE 05</text>
+      <rect class="bx-a" x="536" y="26" width="152" height="66"/>
+      <text x="548" y="48" class="t">splits</text>
+      <text x="548" y="66" class="s">group-aware</text>
+      <text x="548" y="80" class="s">leakage-checked</text>
+
+      <text x="716" y="18" class="st">PHASE 2</text>
+      <rect class="bx" x="712" y="26" width="136" height="66" stroke-dasharray="4 3"/>
+      <text x="724" y="48" class="t">models</text>
+      <text x="724" y="66" class="s">MuRIL + ViT</text>
+      <text x="724" y="80" class="s">cross-attention</text>
+
+      <line class="ln" x1="162" y1="59" x2="180" y2="59" marker-end="url(#ar)"/>
+      <line class="ln" x1="338" y1="59" x2="356" y2="59" marker-end="url(#ar)"/>
+      <line class="ln" x1="514" y1="59" x2="532" y2="59" marker-end="url(#ar)"/>
+      <line class="ln" x1="690" y1="59" x2="708" y2="59" marker-end="url(#ar)"/>
+
+      <text x="12" y="132" class="st">SHARED CONTRACT</text>
+      <rect class="bx" x="8" y="140" width="840" height="52"/>
+      <text x="24" y="163" class="t">FactCheckRecord</text>
+      <text x="24" y="180" class="s">source · url · title · claim_text · verdict_raw · label · is_finance · images[ImageAsset] · raw</text>
+      <text x="470" y="163" class="t">ImageAsset</text>
+      <text x="470" y="180" class="s">url · local_path · role · sha256 · alt_text · caption · ocr_text</text>
+
+      <text x="12" y="228" class="st">ON DISK</text>
+      <rect class="bx" x="8" y="236" width="196" height="44"/>
+      <text x="22" y="256" class="t">data/raw/*.jsonl</text>
+      <text x="22" y="271" class="s">one record per line</text>
+
+      <rect class="bx" x="216" y="236" width="196" height="44"/>
+      <text x="230" y="256" class="t">data/images/</text>
+      <text x="230" y="271" class="s">&lt;uid&gt;_&lt;hash&gt;.jpg</text>
+
+      <rect class="bx" x="424" y="236" width="196" height="44"/>
+      <text x="438" y="256" class="t">data/interim/</text>
+      <text x="438" y="271" class="s">curated · finance · canonical</text>
+
+      <rect class="bx" x="632" y="236" width="216" height="44"/>
+      <text x="646" y="256" class="t">data/processed/</text>
+      <text x="646" y="271" class="s">split_manifest.json (committed)</text>
+
+      <text x="8" y="312" class="s">Every stage is resumable: existing UIDs are skipped, HTTP responses and OCR results are cached to disk.</text>
+      <text x="8" y="328" class="s">Highlighted stages (04, 05) are the ones that protect result validity — see §04 and §07.</text>
+    </svg>
+  </div>
+
+  <h3>Repository layout</h3>
+  <div class="files">
+<span class="dir">Minor Project/</span>
+├── PROJECT_DOCUMENTATION.html  <span class="cmt">this file</span>
+├── pyproject.toml              <span class="cmt">installable package; extras per phase</span>
+├── README.md
+├── <span class="dir">configs/</span>sources.yaml       <span class="cmt">every tunable parameter, no magic numbers in code</span>
+├── <span class="dir">src/fipd/</span>
+│   ├── <span class="dir">schema/</span>      records.py            <span class="cmt">the shared contract</span>
+│   ├── <span class="dir">collection/</span>  base · wordpress ·
+│   │                article · googlefactcheck · registry
+│   ├── <span class="dir">enrichment/</span>  ocr.py · translit.py
+│   ├── <span class="dir">curation/</span>    finance_filter · labels ·
+│   │                dedup.py · splits.py
+│   ├── <span class="dir">datasets/</span>    <span class="cmt">(Phase 2)</span>
+│   └── <span class="dir">utils/</span>       http · io · logging_setup
+├── <span class="dir">scripts/</span>   01_collect · 02_enrich_images · 03_ocr ·
+│              04_curate · 05_split · calibrate_dedup
+├── <span class="dir">tests/</span>     unit/ · integration/ · fixtures/ · run_all.py
+├── <span class="dir">docs/</span>      CHECKLIST.md · PHASE0_GUIDE.md
+└── <span class="dir">data/</span>      <span class="cmt">gitignored — large and re-derivable</span>
+  </div>
+
+  <h3>Why this shape</h3>
+  <ul>
+    <li><strong>Stage numbering in <code>scripts/</code></strong> makes the execution order unambiguous. A new team member can read the directory listing and know what runs when.</li>
+    <li><strong>One package, layered by stage</strong> rather than by file type. Adding an OCR backend touches one directory; adding a source touches one directory.</li>
+    <li><strong>Installable via <code>pyproject.toml</code></strong>, so imports are real imports rather than <code>sys.path</code> manipulation. Optional extras (<code>[ocr]</code>, <code>[model]</code>, <code>[graph]</code>, <code>[serve]</code>) keep a Phase-1 install from pulling in torch.</li>
+    <li><strong>Config over constants.</strong> Thresholds, sources, seeds and ratios live in YAML. Every number that affects a result is visible in one file and quotable in the report.</li>
+    <li><strong>Thin scripts, thick library.</strong> The CLIs parse arguments and print reports; all logic sits in <code>src/fipd/</code> where it can be unit-tested.</li>
+  </ul>
+</section>
+
+<!-- ============================================================ -->
+<section id="findings">
+  <h2><span class="num">03</span>Investigation</h2>
+  <p class="lede">What the data sources actually look like, measured rather than assumed.</p>
+
+  <p>
+    Before writing any scraper, each proposed source was probed for its
+    <code>robots.txt</code>, a structured API, a sitemap, embedded structured
+    data, and — most importantly — its actual yield on finance queries. Several
+    assumptions in the original proposal did not survive.
+  </p>
+
+  <h3>Alt News is dominated by political content</h3>
+  <p>Category counts pulled from the live WordPress API:</p>
+  <table>
+    <thead><tr><th>Category</th><th class="num-col">Posts</th><th>Relevance</th></tr></thead>
+    <tbody>
+      <tr><td>Politics</td><td class="num-col">4,157</td><td class="small">none</td></tr>
+      <tr><td>News</td><td class="num-col">934</td><td class="small">incidental</td></tr>
+      <tr><td>Religion</td><td class="num-col">645</td><td class="small">none</td></tr>
+      <tr><td>Society</td><td class="num-col">280</td><td class="small">incidental</td></tr>
+      <tr><td><strong>Economics</strong></td><td class="num-col"><strong>11</strong></td><td class="small">on-target</td></tr>
+    </tbody>
+  </table>
+  <p>
+    A keyword search for <code>investment</code> across the entire Alt News
+    archive returned <strong>three</strong> articles, none about investment
+    fraud. Alt News stays in the config for coverage, but expecting volume from
+    it would be a planning error.
+  </p>
+
+  <h3>BOOM Live is the primary source</h3>
+  <p>
+    BOOM runs a dedicated <strong>ScamCheck</strong> vertical plus a
+    <code>fact-check/business</code> section covering investment fraud, fake
+    celebrity endorsements, crypto scams and fraudulent trading apps. This was
+    not in the original proposal, which treated all four fact-checkers as
+    roughly equivalent. BOOM is not WordPress; its Quintype API path returns 404,
+    but <code>robots.txt</code> discloses three sitemaps that parse cleanly with
+    <code>&lt;lastmod&gt;</code> on every entry.
+  </p>
+
+  <h3>Newschecker labels its own finance content</h3>
+  <p>
+    Newschecker prefixes financial debunks with <strong>"Scam Alert!"</strong> —
+    a free high-precision filter. A search for <code>investment</code> returned
+    10 posts, 5 directly on-target, all of the same shape:
+  </p>
+  <ul class="small">
+    <li>"Scam Alert! Video Of Rahul Gandhi Promoting Investment Scheme Is Fake"</li>
+    <li>"Scam Alert: Nirmala Sitharaman Did Not Promote This AI-Powered Investment Scheme, Viral Video Is A Deepfake"</li>
+    <li>"Viral Video Of S Jaishankar Promoting Dubious Investment Opportunity Is Deepfake"</li>
+    <li>"Fake Indian Express Report On Ajit Pawar Entrusting AI-Based Investment Platform To Family"</li>
+    <li>"Did Amit Shah Announce This Financial Scheme During A Rally? No, Viral Video Is Doctored"</li>
+  </ul>
+
+  <h3>Access notes</h3>
+  <table>
+    <thead><tr><th>Source</th><th>Method</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Alt News</td><td>WordPress REST</td><td>Open</td></tr>
+      <tr><td>Newschecker</td><td>WordPress REST</td><td>Open</td></tr>
+      <tr><td>BOOM Live</td><td>Sitemap + ClaimReview JSON-LD</td><td>Open</td></tr>
+      <tr><td>Factly</td><td>WordPress REST</td><td>HTTP 403 from datacentre IPs (Cloudflare). Sitemap fallback configured.</td></tr>
+      <tr><td>Vishvas News</td><td>WordPress REST</td><td>Same. Verify from a home connection.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout ok">
+    <span class="tag">Design change from this investigation</span>
+    <p>
+      Every serious fact-checker publishes <a href="https://schema.org/ClaimReview">schema.org
+      <code>ClaimReview</code></a> markup — the structured data Google reads to
+      build fact-check panels — and Google indexes all of it behind a free API.
+      That became the primary discovery layer: one query surface returning claim
+      text, the publisher's own verdict, language and URL across every publisher
+      at once, instead of five HTML parsers that break on redesign.
+    </p>
+    <p>
+      The API also supports <code>reviewPublisherSiteFilter</code>, so collection
+      runs a <strong>publisher sweep</strong> across nine Indian fact-checkers —
+      pulling entire archives and letting the finance filter narrow them —
+      before falling back to a keyword sweep. That does not depend on our lexicon
+      matching their headline wording, which materially raises recall.
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="decisions">
+  <h2><span class="num">04</span>Design decisions</h2>
+  <p class="lede">Each one had a plausible alternative. Stating what was rejected, and why, is the defensible form.</p>
+
+  <div class="decision">
+    <h3>Google Fact Check API as the primary discovery layer</h3>
+    <dl>
+      <dt>Rejected</dt><dd>Crawling each fact-checker's HTML independently.</dd>
+      <dt>Why</dt><dd>Five HTML parsers means five things that silently break on redesign. ClaimReview is a standard publishers maintain themselves, because their Google visibility depends on it — a strong incentive for accuracy, which is exactly what you want in a label source.</dd>
+      <dt>Cost</dt><dd>The API returns no images. Stage 02 exists to fetch them.</dd>
+    </dl>
+  </div>
+
+  <div class="decision">
+    <h3>"Misleading" maps to FAKE, not to a third class</h3>
+    <dl>
+      <dt>Rejected</dt><dd>A three-class problem: true / misleading / false.</dd>
+      <dt>Why</dt><dd>A truncated-axis chart is factually "partly true" and is still a fraudulent promotion. For a fraud detector the operative question is <em>does this deceive</em>, not <em>is every pixel false</em>. Binary also keeps class counts usable at the sizes this dataset will reach.</dd>
+      <dt>Unresolved</dt><dd>Verdicts that cannot be placed map to <code>unknown</code> and are held out of training rather than guessed at — guessing injects label noise no model capacity recovers from.</dd>
+    </dl>
+  </div>
+
+  <div class="decision">
+    <h3>Finance relevance is a hand-weighted lexicon, not a classifier</h3>
+    <dl>
+      <dt>Rejected</dt><dd>Training a small text classifier to identify finance content.</dd>
+      <dt>Why</dt><dd>At collection time there are no labels to train it on — the argument is circular. And a transparent rule can be inspected, tuned and defended in a viva.</dd>
+      <dt>How</dt><dd>Terms weighted 3.0 / 1.5 / 0.7; fields multiplied (title &times;2.5, claim &times;2.0, image text &times;1.5, body &times;1.0). A headline term counts far more than a passing mention in paragraph nine.</dd>
+      <dt>Key part</dt><dd>The <strong>negative lexicon</strong>. Political stories say "crore", "scam" and "fraud" constantly. Terms like <code>communal</code>, <code>election</code>, <code>temple</code> subtract from the score. In testing, a communal-riot article mentioning "crores of views" scored <strong>&minus;4.0</strong> against a keep threshold of 4.0, while a genuine SEBI trading-app scam scored <strong>70.15</strong>.</dd>
+      <dt>Scripts</dt><dd>English, Devanagari (<code>निवेश घोटाला</code>) <em>and</em> romanised Hinglish (<code>paisa double</code>) — scam creatives routinely use Latin-script Hindi, and a Devanagari-only lexicon would miss them entirely.</dd>
+    </dl>
+  </div>
+
+  <div class="decision">
+    <h3>Three perceptual hashes, not one</h3>
+    <dl>
+      <dt>Problem</dt><dd>Exact SHA-256 hashing does not find duplicates: each fact-checker re-hosts the creative through its own CDN, which re-encodes and often re-crops it.</dd>
+      <dt>Built</dt><dd><strong>pHash</strong> (low-frequency DCT, most robust to compression), <strong>dHash</strong> (brightness gradients, robust to rescaling), <strong>cHash</strong> (colour block signature). Combined into one weighted normalised distance.</dd>
+      <dt>Why colour</dt><dd>pHash and dHash both work on greyscale and are blind to colour. Two creatives from the same template with different branding collide under both. Scam creatives are mass-produced from templates, so this is a live failure mode — it was found by a test, not anticipated.</dd>
+      <dt>Threshold</dt><dd>Deliberately <em>not</em> hardcoded from synthetic data. <code>scripts/calibrate_dedup.py</code> estimates it from the real corpus. The shipped default is a starting point, and this is stated in the code.</dd>
+    </dl>
+  </div>
+
+  <div class="decision">
+    <h3>Over-merging is the safe direction</h3>
+    <dl>
+      <dt>Insight</dt><dd>The two dedup failure modes are not symmetric.</dd>
+      <dt>Over-merge</dt><dd>Two distinct items land in one cluster. Costs a little data diversity. <strong>Cannot cause leakage.</strong></dd>
+      <dt>Under-merge</dt><dd>Duplicates land in different clusters, the same creative appears in train and test, and every metric is silently inflated.</dd>
+      <dt>Therefore</dt><dd>The clustering default errs liberal; <code>pick_canonical</code> uses a stricter threshold, because there the asymmetry runs the other way.</dd>
+    </dl>
+  </div>
+
+  <div class="decision">
+    <h3>Split by claim cluster, never by record</h3>
+    <dl>
+      <dt>Why</dt><dd>This is the most common silent failure in misinformation-detection work, and it is invisible in the metrics: leakage makes results <em>better</em>, so nothing looks wrong.</dd>
+      <dt>Defence</dt><dd><code>verify_no_leakage</code> asserts every cluster lives entirely in one split, stage 05 refuses to write the manifest if it fails, and the test suite injects deliberate leakage to confirm detection fires.</dd>
+      <dt>Also</dt><dd>Stratified by (label, source) so no split is accidentally single-publisher — otherwise the test set measures one newsroom's house style rather than fraud.</dd>
+      <dt>Reproducibility</dt><dd>Seeded RNG over sorted cluster ids. The manifest records the seed, counts and a hash; every result should cite that hash.</dd>
+    </dl>
+  </div>
+
+  <div class="decision">
+    <h3>Image hygiene — the most likely source of a fake result</h3>
+    <dl>
+      <dt>The trap</dt><dd>Fact-checkers stamp verdict graphics onto the images they debunk. If those enter training, <strong>the model learns to detect the watermark, not the fraud</strong> — and reports excellent accuracy while being worthless on real posts.</dd>
+      <dt>Defences</dt><dd>(1) URL blocklist for logos, avatars, share icons. (2) <code>ImageAsset.role="annotated"</code> tagging for suspected verdict stamps. (3) Extraction scoped to the article body, so sidebar thumbnails never enter. (4) OCR skips annotated images, so the word "FALSE" never reaches the text branch.</dd>
+      <dt>Insufficient</dt><dd>None of this replaces a manual spot-check before training. Stated in the README and the checklist.</dd>
+    </dl>
+  </div>
+
+  <div class="decision">
+    <h3>OCR text goes first in the text input</h3>
+    <dl>
+      <dt>Why</dt><dd>The claim being classified lives inside the image. When the tokeniser truncates at max length, it should eat the caption, not the thing we care about.</dd>
+      <dt>Also</dt><dd>Which fields are included (caption-only / OCR-only / both) is itself an ablation axis worth reporting.</dd>
+    </dl>
+  </div>
+
+  <div class="decision">
+    <h3>Transliteration by curated lexicon, not blanket conversion</h3>
+    <dl>
+      <dt>Problem</dt><dd>MuRIL was pretrained on Devanagari Hindi and English, but not on romanised Hindi at scale. "paisa double" tokenises into English-looking subwords carrying none of the Hindi meaning.</dd>
+      <dt>Rejected</dt><dd>Transliterating everything. Romanised Hindi has no standard orthography ("paisa"/"paise"/"paisaa"), and rule-based conversion of genuinely English words produces nonsense.</dd>
+      <dt>Built</dt><dd>A curated domain lexicon (~70 finance/scam terms) with optional library fallback. Both surface forms are kept by default — the encoder uses whichever it represents better, at the cost of sequence length only.</dd>
+    </dl>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="modules">
+  <h2><span class="num">05</span>Module reference</h2>
+  <p class="lede">What each file does and the non-obvious parts of how.</p>
+
+  <h3>schema</h3>
+  <table>
+    <thead><tr><th>File</th><th>Responsibility</th></tr></thead>
+    <tbody>
+      <tr><td><code>records.py</code></td><td><code>FactCheckRecord</code> and <code>ImageAsset</code> — the contract every stage speaks. The <code>uid</code> property (SHA-1 of <code>source:source_id</code>) is what makes every stage resumable: stable across re-runs, unique across sources.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>collection</h3>
+  <table>
+    <thead><tr><th>File</th><th>Responsibility</th></tr></thead>
+    <tbody>
+      <tr><td><code>base.py</code></td><td>Shared machinery. <code>extract_images()</code> is the intricate part: reads <code>data-src</code>/<code>data-lazy-src</code> before <code>src</code> so lazy-loaded images are not missed, parses <code>srcset</code> and picks the <em>widest</em> variant (OCR needs legible text; the default <code>src</code> is often a 300px thumbnail), resolves relative URLs, captures <code>alt</code> and <code>&lt;figcaption&gt;</code>, tags suspected verdict stamps.</td></tr>
+      <tr><td><code>wordpress.py</code></td><td>WP REST API. Search mode and category mode; caches the category map; unescapes HTML entities; puts the featured image first because on fact-check sites the hero is very often the viral creative itself.</td></tr>
+      <tr><td><code>article.py</code></td><td>Sitemap discovery (recursing into indexes, filtering by path) plus ClaimReview JSON-LD parsing, walking <code>@graph</code> arrays. Falls back to <code>NewsArticle</code>, then Open Graph, then <code>&lt;title&gt;</code>.</td></tr>
+      <tr><td><code>googlefactcheck.py</code></td><td>Two-pass sweep: publisher filter across nine Indian fact-checkers, then keyword queries. One API claim can carry several publisher reviews; each is emitted separately, which is correct — they are independent labelled items with different articles and images.</td></tr>
+      <tr><td><code>registry.py</code></td><td>Builds scrapers from YAML. Adding a WordPress or sitemap source needs no code change.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>enrichment</h3>
+  <table>
+    <thead><tr><th>File</th><th>Responsibility</th></tr></thead>
+    <tbody>
+      <tr><td><code>ocr.py</code></td><td>Three backends (PaddleOCR / EasyOCR / Tesseract) behind one <code>OCREngine</code> interface, imported lazily so this module never drags in torch. Results carry a <code>script_profile</code> (Devanagari / Latin / digit proportions) and a <code>looks_like_garbage()</code> quality gate. A disk cache makes the slowest stage resumable; engine failures return an error result rather than raising.</td></tr>
+      <tr><td><code>translit.py</code></td><td>NFC normalisation (Devanagari has multiple encodings for the same visible character), the romanised-Hindi lexicon, code-mixing detection, and <code>build_text_input()</code> which assembles the text branch's input.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>curation</h3>
+  <table>
+    <thead><tr><th>File</th><th>Responsibility</th></tr></thead>
+    <tbody>
+      <tr><td><code>finance_filter.py</code></td><td>The weighted lexicon and negative lexicon, plus <code>DISCOVERY_QUERIES</code> — so the project's whole finance vocabulary sits in one file.</td></tr>
+      <tr><td><code>labels.py</code></td><td>Ordered verdict-string rules ("Mostly True" must be checked before generic false patterns), English and Devanagari, with a title-convention fallback for sources that emit no rating.</td></tr>
+      <tr><td><code>dedup.py</code></td><td>pHash / dHash / cHash, combined distance, union-find single-linkage clustering, and text-shingle Jaccard for creatives that differ visually but assert one claim. <code>pick_canonical</code> selects one representative per cluster deterministically.</td></tr>
+      <tr><td><code>splits.py</code></td><td>Group-aware stratified splitting with largest-remainder allocation (so small strata do not lose their val/test share to <code>floor()</code>), the leakage assertion, and manifest save/load.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>utils</h3>
+  <table>
+    <thead><tr><th>File</th><th>Responsibility</th></tr></thead>
+    <tbody>
+      <tr><td><code>http.py</code></td><td>Rate limiting measured from the last request (so slow responses do not stack extra delay), retry with backoff honouring <code>Retry-After</code>, and disk caching that stores headers separately — WordPress returns pagination totals in <code>X-WP-TotalPages</code>, and losing that on a cache hit would break paging.</td></tr>
+      <tr><td><code>io.py</code></td><td>JSONL read/write, bad-line tolerance, <code>existing_uids()</code> — the basis of every resume.</td></tr>
+      <tr><td><code>logging_setup.py</code></td><td>One logging config; silences urllib3/PIL, which drown real output at DEBUG.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Scripts</h3>
+  <pre><code>python scripts/01_collect.py                 # harvest fact-check archives
+python scripts/02_enrich_images.py           # fetch creatives for API-found URLs
+python scripts/03_ocr.py --backend easyocr   # extract in-image text
+python scripts/calibrate_dedup.py            # tune duplicate threshold on real data
+python scripts/04_curate.py                  # filter, label, deduplicate
+python scripts/05_split.py                   # freeze leakage-free splits</code></pre>
+</section>
+
+<!-- ============================================================ -->
+<section id="testing">
+  <h2><span class="num">06</span>Testing</h2>
+  <p class="lede">172 assertions, no network, no load on anyone's servers.</p>
+
+  <table>
+    <thead><tr><th>Suite</th><th class="num-col">Assertions</th><th>Covers</th></tr></thead>
+    <tbody>
+      <tr><td><code>unit/test_collection.py</code></td><td class="num-col">56</td><td>WordPress + article scraping, image extraction, filtering, labelling, persistence</td></tr>
+      <tr><td><code>unit/test_curation.py</code></td><td class="num-col">83</td><td>Perceptual hashing, clustering, splitting, OCR interface, transliteration</td></tr>
+      <tr><td><code>integration/test_stages.py</code></td><td class="num-col">33</td><td>The stage CLIs end to end, as a user invokes them</td></tr>
+    </tbody>
+  </table>
+  <pre><code>python tests/run_all.py     # 172 passed, 0 failed</code></pre>
+
+  <h3>Method: a local mock, not the live sites</h3>
+  <p>
+    <code>tests/fixtures/mock_server.py</code> replicates the real response
+    shapes — WordPress pagination with genuine <code>X-WP-Total</code> headers,
+    a sitemap with <code>&lt;lastmod&gt;</code>, article pages carrying real
+    ClaimReview and NewsArticle JSON-LD, and valid JPEG bytes. Field and header
+    names were verified against the live endpoints during the investigation, so
+    a scraper that passes here exercises the same code paths it will use in
+    production — without hammering small non-profit newsrooms during development,
+    and without tests that break whenever a site changes.
+  </p>
+
+  <h3>Fixtures are adversarial on purpose</h3>
+  <ul>
+    <li>A <code>srcset</code> where the correct answer is <em>not</em> the default <code>src</code></li>
+    <li>A lazy-loaded image with no <code>src</code> at all</li>
+    <li>A site logo and a verdict stamp that must both be excluded</li>
+    <li>A sidebar "related story" thumbnail that must not enter the record</li>
+    <li>A communal-riot article containing "crores" — the false-positive trap the negative lexicon exists to catch</li>
+    <li>Deliberately injected split leakage, to confirm the detector fires</li>
+  </ul>
+
+  <h3>Image tests use real transforms</h3>
+  <p>
+    Synthetic creatives are generated with PIL and then genuinely
+    re-compressed (JPEG q25), rescaled (50% and 2&times;), cropped and
+    brightened. The whole point of perceptual hashing is surviving exactly those
+    operations, so a mock would prove nothing.
+  </p>
+  <p>
+    The assertion that matters is threshold-independent: <em>every true
+    duplicate must be closer than every distinct pair</em>. Absolute thresholds
+    are data-dependent and are calibrated separately.
+  </p>
+
+  <div class="callout">
+    <span class="tag">A test that found a real bug</span>
+    <p>
+      The "distinct images are not merged" assertion failed during development:
+      two different creatives hashed 6 bits apart, under the threshold. Diagnosis
+      showed all collisions were same-template pairs — and since pHash and dHash
+      both operate on greyscale, they were blind to the colour differences that
+      distinguish them. That is what motivated adding cHash. The failure came
+      from a test, not from foresight.
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="problems">
+  <h2><span class="num">07</span>Open problems</h2>
+  <p class="lede">The honest limitations. Both are better raised with the supervisor now than discovered in the final month.</p>
+
+  <div class="callout">
+    <span class="tag">Problem 1 &mdash; yield</span>
+    <p>
+      The archives may not contain enough finance items to train on. Alt News has
+      11 finance posts against 4,157 political ones. Run
+      <code>scripts/04_curate.py</code> and read the yield table before committing
+      to the current phasing.
+    </p>
+    <p>
+      <strong>If the count lands under ~500</strong>, the fact-check archives are
+      a <em>seed and evaluation set</em>, not a training set, and Telegram
+      collection has to move from Phase 3 up to Phase 1 — Telethon on public
+      channels is then the only route to training-scale data. This is a
+      scheduling risk, not a fatal one, but it needs deciding early.
+    </p>
+  </div>
+
+  <div class="callout danger">
+    <span class="tag">Problem 2 &mdash; class balance (the serious one)</span>
+    <p>
+      <strong>Every record this pipeline produces is labelled <code>fake</code>.</strong>
+      Fact-checking archives exist to document falsehoods; nobody publishes an
+      article confirming that an ordinary legitimate advertisement is legitimate.
+      A binary classifier cannot be trained on one class. Stage 04 prints an
+      explicit warning when it detects this.
+    </p>
+    <p>Legitimate promotions must be sourced separately. Candidates:</p>
+    <ul>
+      <li><strong>SEBI-registered investment advisors' public posts</strong> — the registry of registered IAs and RAs is public, so the label is externally defensible</li>
+      <li><strong>AMFI "Mutual Funds Sahi Hai"</strong> campaign creatives</li>
+      <li><strong>Registered broker marketing</strong> — Zerodha, Groww, Upstox</li>
+      <li><strong>RBI / SEBI investor-education material</strong></li>
+      <li><strong>Legitimate financial news graphics</strong> — hard negatives that resemble the fake charts but are not fraudulent</li>
+    </ul>
+    <p>
+      <strong>The critical constraint:</strong> negatives must be <em>the same
+      genre of image</em> — promotional finance graphics — differing only in
+      whether they deceive. A model trained on scam creatives versus random stock
+      photos will report 97% accuracy and will have learned to recognise a
+      screenshot, not a fraud. This is the highest-risk decision in the project,
+      and it matters more than the choice of image encoder or fusion mechanism.
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="roadmap">
+  <h2><span class="num">08</span>Roadmap</h2>
+  <p class="lede">Full detail with effort estimates in <code>docs/CHECKLIST.md</code>.</p>
+
+  <table>
+    <thead><tr><th>Phase</th><th>Work</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td><strong>0</strong></td><td>API key, first collection, yield gate, negative-class decision</td><td><span class="status-dot now"></span>In progress</td></tr>
+      <tr><td><strong>1</strong></td><td>Collection pipeline, finance filter, labelling</td><td><span class="status-dot done"></span>Complete</td></tr>
+      <tr><td><strong>1.3</strong></td><td>Near-duplicate detection, group-aware splits</td><td><span class="status-dot done"></span>Complete</td></tr>
+      <tr><td><strong>1.5</strong></td><td>Negative-class collection</td><td><span class="status-dot todo"></span>Blocked on Gate 2</td></tr>
+      <tr><td><strong>1.6</strong></td><td>OCR module</td><td><span class="status-dot done"></span>Built, awaiting real images</td></tr>
+      <tr><td><strong>1.7</strong></td><td>Label Studio verification pass</td><td><span class="status-dot todo"></span>Pending</td></tr>
+      <tr><td><strong>2</strong></td><td>MuRIL + ViT/CLIP, cross-attention fusion, ablation</td><td><span class="status-dot todo"></span>Pending</td></tr>
+      <tr><td><strong>2.5</strong></td><td>Fin-Fact / Fakeddit benchmarking</td><td><span class="status-dot todo"></span>Pending</td></tr>
+      <tr><td><strong>3</strong></td><td>Telethon collection, forwarding graph, GNN branch</td><td><span class="status-dot todo"></span>Pending</td></tr>
+      <tr><td><strong>4</strong></td><td>Distillation, ONNX, FastAPI + Streamlit demo</td><td><span class="status-dot todo"></span>Pending</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Things to get right in Phase 2</h3>
+  <ul>
+    <li><strong>Build the ablation arms first.</strong> Text-only and image-only baselines are the deliverable the supervisor asked for, not an appendix — and they give a working number early.</li>
+    <li><strong>Report precision, recall, F1 and PR-AUC, not accuracy.</strong> Accuracy is close to meaningless on imbalanced fraud data.</li>
+    <li><strong>Run the targeted experiment.</strong> Build an evaluation subset where the caption is benign and the claim is image-only. If fusion does not beat text-only <em>there</em>, the central thesis is not demonstrated regardless of overall F1. This is the most convincing single experiment available.</li>
+    <li><strong>Define "lightweight" as a number</strong> before building — model size, CPU latency, parameter count — so Phase 4 measures against a commitment rather than reverse-justifying a result.</li>
+    <li><strong>3&ndash;5 seeds per arm</strong>, reporting mean &plusmn; std. A 1% gain on one seed is noise.</li>
+  </ul>
+</section>
+
+<!-- ============================================================ -->
+<section id="log">
+  <h2><span class="num">09</span>Change log</h2>
+  <p class="lede">This document is maintained as the project progresses.</p>
+
+  <div class="card">
+    <h3>v0.2 &mdash; Restructure and risk modules</h3>
+    <ul>
+      <li>Reorganised into an installable package (<code>src/fipd/</code>) layered by pipeline stage; <code>pyproject.toml</code> with per-phase optional extras; scripts renumbered by stage</li>
+      <li>Added near-duplicate detection: pHash, dHash, cHash, combined distance, union-find clustering, text-shingle merging</li>
+      <li>Added group-aware stratified splitting with a hard leakage assertion and a committed manifest</li>
+      <li>Added the OCR stage: three pluggable backends, disk cache, quality gate, annotation skipping</li>
+      <li>Added transliteration and text-input assembly for code-mixed Hindi/English</li>
+      <li>Added <code>calibrate_dedup.py</code> — estimates the duplicate threshold from the real corpus rather than hardcoding a synthetic one</li>
+      <li>Test suite grown from 56 to 172 assertions, now including integration coverage of the stage CLIs</li>
+      <li>This HTML document replaces <code>docs/PHASE1_WALKTHROUGH.md</code></li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>v0.1 &mdash; Collection pipeline</h3>
+    <ul>
+      <li>Source investigation across five Indian fact-checkers; BOOM identified as primary</li>
+      <li>Three scraper backends: WordPress REST, sitemap + ClaimReview, Google Fact Check API</li>
+      <li>Weighted-lexicon finance filter with negative lexicon; verdict&rarr;label mapper</li>
+      <li>Offline mock-server test harness, 56 assertions</li>
+      <li>Publisher-sweep support added to the Google API scraper</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <p>
+    Minor Project &middot; supervisor Dr.&nbsp;Shivangi Surati &middot;
+    Phase&nbsp;1 complete, 46 files, 4,663 lines of Python, 172 tests passing.
+  </p>
+  <p class="small">
+    Companion documents: <code>docs/PHASE0_GUIDE.md</code> (step-by-step for the
+    current phase) and <code>docs/CHECKLIST.md</code> (full roadmap with effort
+    estimates and a risk register).
+  </p>
+</footer>
+
+</div>
+</body>
+</html>

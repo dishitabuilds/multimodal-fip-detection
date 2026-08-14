@@ -1,0 +1,180 @@
+# Source registry for the fact-check collection stage.
+#
+# `kind` picks the scraper implementation:
+#   wordpress -> src/collection/wordpress.py   (WP REST API)
+#   article   -> src/collection/article.py     (sitemap + JSON-LD)
+#   gfc       -> src/collection/googlefactcheck.py (Google ClaimReview index)
+#
+# Politeness: min_delay/max_delay are seconds between requests. These sites are
+# small non-profits — do not lower these.
+
+defaults:
+  min_delay: 1.5
+  max_delay: 3.0
+  out_dir: data
+
+sources:
+
+  # -- Primary discovery layer. One query surface across every publisher. ----
+  googlefactcheck:
+    kind: gfc
+    enabled: true
+    restrict_to_india: true
+    languages: [en, hi]
+    max_pages: 20
+    # Pass 1 — pull these publishers' ENTIRE archives, then let the finance
+    # filter narrow them. Higher recall than keyword matching, because it does
+    # not depend on our lexicon matching their headline wording.
+    publishers:
+      - boomlive.in
+      - factly.in
+      - newschecker.in
+      - vishvasnews.com
+      - altnews.in
+      - indiatoday.in
+      - thequint.com
+      - factcrescendo.com
+      - digiteye.in
+    # Pass 2 — keyword sweep, catches publishers not listed above.
+    # Queries default to DISCOVERY_QUERIES in src/filtering/finance_filter.py
+    notes: >
+      Needs FACTCHECK_API_KEY. Yields URLs + claim + verdict but no images;
+      run scripts/enrich_images.py afterwards to fetch the creatives.
+
+  # -- BOOM Live: has a dedicated ScamCheck vertical, best single source ----
+  boomlive:
+    kind: article
+    enabled: true
+    base_url: https://www.boomlive.in
+    sitemaps:
+      - https://www.boomlive.in/sitemap-daily.xml
+      - https://www.boomlive.in/sitemap-daily-updated.xml
+      - https://www.boomlive.in/news-sitemap-daily.xml
+    path_filters:
+      - /fact-check/business
+      - /scamcheck
+      - /fact-check/
+      - /decode/
+    article_selector: null
+    min_delay: 2.0
+    max_delay: 4.0
+
+  # -- Newschecker: prefixes financial debunks with "Scam Alert!" ----------
+  newschecker:
+    kind: wordpress
+    enabled: true
+    base_url: https://newschecker.in
+    search:
+      - investment
+      - trading
+      - scam alert
+      - SEBI
+      - stock market
+      - deepfake investment
+      - crypto
+      - loan app
+      - ponzi
+      - money doubling
+    per_page: 50
+    max_pages: 20
+
+  # -- Alt News: mostly political, low finance yield, included for coverage -
+  altnews:
+    kind: wordpress
+    enabled: true
+    base_url: https://www.altnews.in
+    search:
+      - investment
+      - trading
+      - SEBI
+      - stock market
+      - scam
+      - crypto
+      - loan app
+    per_page: 50
+    max_pages: 10
+
+  # -- Factly: strong on financial/government claims -----------------------
+  # NOTE: the WP REST API sits behind Cloudflare and returns 403 from some
+  # networks/datacentres. If that happens, flip kind to `article` and use the
+  # sitemap config below instead.
+  factly:
+    kind: wordpress
+    enabled: true
+    base_url: https://factly.in
+    search:
+      - investment
+      - trading
+      - SEBI
+      - RBI
+      - stock market
+      - scheme
+      - loan
+      - scam
+    per_page: 50
+    max_pages: 20
+    fallback:
+      kind: article
+      sitemaps:
+        - https://factly.in/sitemap_index.xml
+      path_filters:
+        - /
+
+  # -- Vishvas News: large Hindi archive, important for code-mixed text -----
+  vishvasnews:
+    kind: wordpress
+    enabled: true
+    base_url: https://www.vishvasnews.com
+    search:
+      - investment
+      - निवेश
+      - trading
+      - SEBI
+      - शेयर बाजार
+      - scam
+      - पैसा
+      - loan
+    per_page: 50
+    max_pages: 20
+
+
+# ---------------------------------------------------------------------------
+# Curation (stage 04)
+# ---------------------------------------------------------------------------
+curation:
+  # Weighted-lexicon threshold above which a record is kept as finance-related.
+  # Lower it to raise recall, raise it to cut political noise.
+  finance_threshold: 4.0
+  drop_unknown_labels: false
+
+  dedup:
+    # Combined normalised image distance in [0,1] below which two images are
+    # "the same creative". MUST be calibrated on the real corpus:
+    #   python scripts/calibrate_dedup.py
+    # The default errs liberal on purpose — over-merging costs a little data
+    # diversity, under-merging leaks duplicates across the train/test split.
+    image_threshold: 0.22
+    # Minimum Jaccard on claim-text shingles for "the same claim".
+    text_threshold: 0.6
+    use_text: true
+
+# ---------------------------------------------------------------------------
+# Splitting (stage 05)
+# ---------------------------------------------------------------------------
+splits:
+  ratios: [0.7, 0.15, 0.15]
+  seed: 42
+  # Stratify clusters by (label, source) so no split is accidentally
+  # single-publisher or single-class.
+  stratify: true
+
+# ---------------------------------------------------------------------------
+# OCR (stage 03)
+# ---------------------------------------------------------------------------
+ocr:
+  backend: easyocr        # paddleocr | easyocr | tesseract
+  languages: [en, hi]
+  gpu: false
+  # Never OCR images tagged as fact-checker annotations: a verdict stamp would
+  # inject the word "FALSE" straight into the text branch.
+  skip_annotated: true

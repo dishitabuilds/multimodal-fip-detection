@@ -1,0 +1,44 @@
+# --- collected data: never commit, it is large and re-derivable ---
+# Trailing /* not / — excluding the directory itself would make the .gitkeep
+# negation below a no-op, and a fresh clone would come up without data/ dirs.
+data/raw/*
+data/images/*
+data/interim/*
+data/processed/*
+data/.httpcache/
+!data/**/.gitkeep
+
+# --- secrets ---
+.env
+*.session
+*.session-journal
+credentials.json
+api_keys.txt
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- models / experiments ---
+checkpoints/
+runs/
+wandb/
+*.pt
+*.pth
+*.onnx
+*.bin
+
+# --- os / editor ---
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

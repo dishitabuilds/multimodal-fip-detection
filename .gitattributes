@@ -1,0 +1,16 @@
+# Normalise to LF in the repository, check out native. Without this, working
+# on the project from two machines produces whole-file diffs on line endings.
+* text=auto eol=lf
+
+# Binary / generated — never diff or normalise these.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.pt  binary
+*.pth binary
+*.onnx binary
+
+# Collected data is JSONL; keep it LF and out of diffs when it is committed
+# deliberately (manifests, small samples).
+*.jsonl text eol=lf
