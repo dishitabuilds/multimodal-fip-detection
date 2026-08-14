@@ -42,6 +42,12 @@ sources:
       run scripts/enrich_images.py afterwards to fetch the creatives.
 
   # -- BOOM Live: has a dedicated ScamCheck vertical, best single source ----
+  # Caveat, verified 2026-08-15: BOOM publishes ONLY these three daily
+  # sitemaps — /sitemap.xml and /sitemap-index.xml are both 404. So this route
+  # reaches the last few days of articles, not the archive (a smoke run
+  # returned 8 records). BOOM's back catalogue is reachable through the Google
+  # Fact Check API instead, which is one more reason the API key is the first
+  # item in docs/CHECKLIST.md.
   boomlive:
     kind: article
     enabled: true
@@ -95,9 +101,10 @@ sources:
     max_pages: 10
 
   # -- Factly: strong on financial/government claims -----------------------
-  # NOTE: the WP REST API sits behind Cloudflare and returns 403 from some
-  # networks/datacentres. If that happens, flip kind to `article` and use the
-  # sitemap config below instead.
+  # The WP REST API sits behind Cloudflare and returned 403 from the dev
+  # sandbox. Verified working from the project machine on 2026-08-15, so it
+  # stays on `wordpress`; the fallback below is taken automatically if a run
+  # ever comes back empty (see scripts/01_collect.py).
   factly:
     kind: wordpress
     enabled: true
@@ -121,6 +128,12 @@ sources:
         - /
 
   # -- Vishvas News: large Hindi archive, important for code-mixed text -----
+  # Its WP REST API answers 401 to anonymous callers (verified 2026-08-15 from
+  # the project machine — every search term, not just some). The search terms
+  # are kept for the day that changes; in practice the sitemap fallback is what
+  # runs, and it is taken automatically. The sitemap index fans out to 34 child
+  # sitemaps covering the whole archive, so discovery is slow but one-time —
+  # responses are cached under data/.httpcache/.
   vishvasnews:
     kind: wordpress
     enabled: true
@@ -136,6 +149,20 @@ sources:
       - loan
     per_page: 50
     max_pages: 20
+    fallback:
+      kind: article
+      sitemaps:
+        - https://www.vishvasnews.com/sitemap_index.xml
+      # Verified against post-sitemap.xml on 2026-08-15. The archive is also
+      # split by language section: /urdu, /punjabi and /assamese are excluded
+      # because the text branch is scoped to code-mixed Hindi/English.
+      path_filters:
+        - /viral/
+        - /politics/
+        - /society/
+        - /world/
+        - /health/
+        - /english/
 
 
 # ---------------------------------------------------------------------------

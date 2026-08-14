@@ -46,7 +46,11 @@ _COMPILED = [(re.compile(p, re.I | re.U), lab) for p, lab in _RULES]
 _TITLE_FAKE = re.compile(
     r"^(fact check:?\s*)?(no,|scam alert|fake|viral (image|video|post|claim) (is|of))|"
     r"(is fake|is a deepfake|is false|is misleading|is doctored|is morphed|"
-    r"falsely (shared|linked|viral|claimed)|does not show|did not|not real)",
+    r"falsely (shared|linked|viral|claimed|claims|claiming)|does not show|did not|not real)|"
+    # Plural subjects: "Viral Facebook ads ... are fake". The singular forms
+    # above were matching and these were not, which is an oversight rather
+    # than a judgement call.
+    r"\bare (fake|false|misleading|doctored|morphed|edited|unrelated|not real)\b",
     re.I,
 )
 _TITLE_REAL = re.compile(r"^(yes,|true:|confirmed:)|\b(is (true|real|genuine|authentic))\b", re.I)

@@ -16,6 +16,30 @@ caption, which stays vague and harmless. Text-only classifiers miss these.
 Fused with cross-attention. An ablation (text-only vs image-only vs fused)
 measures what each modality contributes rather than assuming it.
 
+## What "lightweight" means here
+
+The word in the title is a claim, and a claim without a number cannot be wrong.
+These are the targets, and they apply to the **deployed** (student, INT8) model
+— the teacher is measured too, but only as the baseline the reduction is quoted
+against.
+
+| Budget | Target | Why this number |
+|---|---|---|
+| Parameters | ≤ 50 M | the largest model that still quantises under 100 MB |
+| Size on disk | ≤ 100 MB | fits a free-tier container image and one HTTP download |
+| CPU latency p50 | ≤ 100 ms | below the threshold where an upload feels instant |
+| CPU latency p95 | ≤ 250 ms | tail latency on a shared CPU is mostly scheduling noise |
+| Peak RAM | ≤ 1 GB | the Streamlit Community Cloud limit, where the demo runs |
+| macro-F1 retention | ≥ 0.95 × teacher | without this, "fast" is satisfied by a model that is useless |
+
+Measured at batch size 1, 4 threads, 224×224 image, 128 text tokens, median of
+100 timed runs after 10 warm-ups, on an Intel Core 7 150U. **A latency figure
+without those conditions is not comparable to anything, including itself.**
+
+The targets live in `configs/model.yaml` and `python scripts/06_budget.py` is
+the test of them. Missing one is a result, not an embarrassment — it is the
+size/latency/accuracy tradeoff the report has to contain either way.
+
 > **Full documentation:** open `PROJECT_DOCUMENTATION.html` in the project root.
 > It is the living record of what has been built, how, and why.
 
@@ -27,7 +51,7 @@ measures what each modality contributes rather than assuming it.
 python -m venv .venv
 .venv\Scripts\activate            # Windows
 pip install -e .                  # installs the fipd package
-python tests/run_all.py           # expect: 172 passed, 0 failed
+python tests/run_all.py           # expect: 261 passed, 0 failed
 ```
 
 Optional extras: `pip install -e ".[ocr]"`, `".[model]"`, `".[graph]"`, `".[serve]"`.
@@ -43,7 +67,13 @@ python scripts/03_ocr.py --backend easyocr   # extract in-image text
 python scripts/calibrate_dedup.py            # tune the duplicate threshold on real data
 python scripts/04_curate.py                  # filter, label, deduplicate
 python scripts/05_split.py                   # freeze leakage-free splits
+python scripts/06_budget.py --targets-only   # the lightweight budget
+python scripts/07_ablation.py                # text-only vs image-only vs fused
 ```
+
+Stage 01 obeys `robots.txt` and, if a source returns nothing at all, retries it
+through the `fallback` route in `configs/sources.yaml` automatically — several
+archives block their REST API but leave their sitemaps open.
 
 ## Layout
 
@@ -56,7 +86,9 @@ python scripts/05_split.py                   # freeze leakage-free splits
 │   ├── collection/              stage 1: WordPress, sitemap+ClaimReview, Google API
 │   ├── enrichment/              stage 2/3: OCR backends, transliteration
 │   ├── curation/                stage 4/5: finance filter, labels, dedup, splits
-│   ├── datasets/                stage 6: torch views, benchmark loaders  (empty)
+│   ├── datasets/                stage 6: records -> examples, torch dataset
+│   ├── models/                  encoders, cross-attention fusion, arms, budget
+│   ├── training/                metrics, training loop, ablation
 │   └── utils/                   HTTP, IO, logging
 ├── scripts/                     numbered stage CLIs + calibration tool
 ├── tests/
@@ -68,19 +100,29 @@ python scripts/05_split.py                   # freeze leakage-free splits
 
 ## Where things stand
 
-- **Phase 1 pipeline: complete and tested.** 172 assertions, all offline.
-- **No data collected yet** — that is Phase 0, in `docs/PHASE0_GUIDE.md`.
-- **No model code yet**, deliberately. Architecture decisions wait on knowing
-  the dataset is viable.
+- **Phase 1 pipeline: complete and tested.** 261 assertions, all offline.
+- **First real collection done** (2026-08-15): 1208 records from 5 archives.
+  After filtering and labelling, **52 usable items — a 4.3% end-to-end yield**,
+  every one of them `fake`. Numbers and caveats in `docs/CHECKLIST.md`.
+- **Model code: scaffolding written, nothing trained.** Encoders, cross-attention
+  fusion, the three ablation arms, metrics and the budget all exist; the parts
+  that do not need torch are tested. No training has happened, because there is
+  no negative class yet.
 
-Two open problems are documented in `docs/CHECKLIST.md` and the HTML write-up:
-yield (the archives are overwhelmingly political) and class balance (every
-record collected is labelled `fake`, because fact-checkers only publish
-debunks). Both need answers before Phase 2.
+Three open problems, in the order they block things:
+
+1. **Class balance.** Every record collected is `fake` — fact-checkers only
+   publish debunks. No classifier can be trained until this is answered
+   (Gate 2). It is the single blocking issue.
+2. **Yield.** The archives are overwhelmingly political. 4.3% end to end, and
+   the largest source (Factly) publishes no machine-readable verdict at all.
+3. **Nothing is verified against real tensors.** torch is not installed on the
+   collection machine, so the arms build in principle only.
 
 ## Collection ethics
 
 Only publicly published fact-check articles, at 1.5–4 s between requests,
-honouring `robots.txt`, cached so nothing is fetched twice. These are small
-non-profit newsrooms — do not lower the delays. Phase 3 Telegram collection
-uses Telethon against the official API on public channels only.
+cached so nothing is fetched twice. `robots.txt` is fetched once per host and
+obeyed, and a `Crawl-delay` longer than ours replaces ours (never shortens it).
+These are small non-profit newsrooms — do not lower the delays. Phase 3 Telegram
+collection uses Telethon against the official API on public channels only.

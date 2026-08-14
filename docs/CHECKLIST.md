@@ -19,27 +19,109 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · **GATE** decision point
   Cloud Console → enable "Fact Check Tools API" → create key → `setx FACTCHECK_API_KEY "..."` → restart terminal.
   *Done when:* `python scripts/collect_factchecks.py --source googlefactcheck --limit 5 --no-images` returns records.
 
-- [ ] **Run a full collection** — *0.5 d* (mostly waiting)
-  `python scripts/collect_factchecks.py` then `python scripts/enrich_images.py --finance-only`
+- [~] **Run a full collection** — *0.5 d* (mostly waiting)
+  `python scripts/01_collect.py` then `python scripts/02_enrich_images.py --finance-only`
   *Done when:* `data/raw/` has records from every enabled source, or you've logged why a source failed.
+  **2026-08-15:** first real collection run, no images yet. Every key-free
+  source is now either producing or has a logged reason. Still to do: re-run
+  without `--limit`, and with images, once Gate 1 is answered.
 
-- [ ] **GATE 1 — Read the yield table** — *0.5 d*
-  `python scripts/build_dataset.py`
+- [~] **GATE 1 — Read the yield table** — *0.5 d*
+  `python scripts/04_curate.py`
   *Decide:* if finance-labelled items are **under ~500**, the fact-check archives are a seed and evaluation set only, and Telegram collection moves from Phase 3 to Phase 1. Write the number down; it goes in the report.
 
-- [ ] **Verify Factly and Vishvas News work from your machine** — *0.25 d*
-  Both returned 403 from the dev sandbox (Cloudflare). If still blocked, flip `kind: wordpress` → `article` in `configs/sources.yaml` and use the `fallback` sitemap block.
+  **First measurement, 2026-08-15** — 400 records/source cap, no images, no OCR:
+
+  | source | raw | finance | labelled+finance |
+  |---|---|---|---|
+  | newschecker | 177 | 80 | 20 |
+  | factly | 400 | 143 | 14 |
+  | vishvasnews | 400 | 14 | 13 |
+  | altnews | 223 | 32 | 5 |
+  | boomlive | 8 | 0 | 0 |
+  | **total** | **1208** | **269** | **52** |
+
+  **52 usable items from 1208 collected — a 4.3% end-to-end yield.** All 52 are
+  labelled `fake` (Gate 2 confirmed empirically, not just suspected).
+
+  This is provisional and the true number is higher, for three reasons:
+  1. **The verdict bug below cost 81% of the yield** and is now fixed; the
+     re-run should land nearer **~113**.
+  2. **No OCR yet.** The finance filter is scoring captions and body text only.
+     Yield should rise once `ocr_text` is populated — measure by how much, it
+     is a result worth reporting.
+  3. **Capped at 400/source.** Not a full harvest.
+
+  Even at ~113 this is far short of 500, so **plan for Gate 1 to fail**: the
+  archives look like a seed and evaluation set, and Telegram collection should
+  be expected to move into Phase 1. Do not treat that as decided until the
+  re-run with OCR gives a real number.
+
+- [x] **Fix the verdict loss in the WordPress route** — *found and fixed 2026-08-15*
+  **217 of 269 finance-relevant records (81%) were being dropped as unlabelled,
+  every one of them with an empty `verdict_raw`.** The cause: the WordPress
+  REST API has no rating field at all, so `verdict_raw` was never populated for
+  any WP-sourced record. The verdict was published all along, in ClaimReview
+  markup on the article page the REST route never fetched.
+  Now recovered by fetching the article when a post arrives without a verdict
+  (one extra cached request per record). Measured recovery, on a 272-record
+  sample:
+
+  | source | recovered | how |
+  |---|---|---|
+  | newschecker | **75 / 100** | Next.js streamed payload |
+  | altnews | **60 / 100** | plain `ld+json` tag |
+  | factly | 0 / 72 | publishes no ClaimReview at all |
+
+  Newschecker needed a second extraction route: it is a Next.js app-router site
+  and injects its JSON-LD client-side from an escaped string inside
+  `self.__next_f.push([...])`, so there is no `<script type="application/ld+json">`
+  for a parser to find and the verdict looks absent when it is right there.
+  Both routes are covered by tests.
+  **Factly still yields no verdicts — worth 30 minutes to find out whether its
+  verdict lives somewhere else in the page**, since it is the largest single
+  source of finance-flagged records (143).
+
+- [x] **Verify Factly and Vishvas News work from your machine** — *0.25 d*
+  **Answered 2026-08-15.**
+  * **Factly — works.** The WP REST API answers normally from this machine; the
+    dev-sandbox 403 was the sandbox's IP, not the site. Left on `kind: wordpress`.
+  * **Vishvas News — blocked, and not by Cloudflare.** Its WP REST API returns
+    **HTTP 401** to anonymous callers on every search term, so no amount of
+    retrying helps. Now collected through its sitemap instead (`sitemap_index.xml`,
+    34 child sitemaps, whole archive), which works.
+  * The `fallback:` block in `configs/sources.yaml` was documented but **never
+    read by any code**. It is now wired up: a source that returns zero records
+    is retried through its fallback automatically (`scripts/01_collect.py`,
+    disable with `--no-fallback`).
+  * **BOOM Live publishes only three daily sitemaps** — `/sitemap.xml` and
+    `/sitemap-index.xml` are both 404. That route reaches the last few days,
+    not the archive (8 records). BOOM's back catalogue needs the Google Fact
+    Check API, which makes the API key below more important than it looks.
 
 - [ ] **GATE 2 — Agree the negative-class strategy with Dr. Surati** — *1 d discussion*
   Currently 100% of collected records are `fake`. Present the options (SEBI-registered advisor posts, AMFI campaigns, registered broker marketing, RBI/SEBI investor education) and the constraint: **negatives must be the same genre of image** — promotional finance graphics — differing only in whether they deceive.
   *Done when:* you have a written decision on where negatives come from.
 
-- [ ] **Set up Git + GitHub** — *0.5 d*
-  `.gitignore` is already written and excludes `data/`, `.session` files and API keys. Push before you accumulate more work.
+- [~] **Set up Git + GitHub** — *0.5 d*
+  **2026-08-15:** repo initialised, initial commit made, work branched onto
+  `phase0-unblock`. Two `.gitignore` fixes came out of it: the `.gitkeep`
+  negation could never fire (git cannot re-include a file whose parent
+  directory is excluded, so `data/raw/` became `data/raw/*`), and a
+  `.gitattributes` now pins LF so two machines do not fight over line endings.
+  **Still to do: create the GitHub remote and push.** That needs your account.
 
-- [ ] **Define "lightweight" as a number** — *0.25 d*
-  Pick targets now, e.g. **< 100 MB model size**, **< 100 ms CPU inference**, **< 50 M params**. Without a target the word in your title is unfalsifiable.
-  *Done when:* the targets are written into the README.
+- [x] **Define "lightweight" as a number** — *0.25 d*
+  **Done 2026-08-15.** Targets are in `configs/model.yaml` and the README:
+  **≤ 50 M params · ≤ 100 MB on disk · ≤ 100 ms p50 / 250 ms p95 CPU ·
+  ≤ 1 GB peak RAM · ≥ 0.95 × teacher macro-F1.**
+  The last row is what stops the budget being gamed — without it, a model that
+  answers "fake" in 3 ms passes every other target.
+  Measurement conditions are pinned alongside them (batch 1, 4 threads, 224px,
+  128 tokens, median of 100 runs after 10 warm-ups, named reference machine),
+  because a latency number without its conditions is not comparable to anything.
+  `python scripts/06_budget.py` is the test; `--targets-only` prints the budget
+  without needing torch or a model.
 
 ---
 
@@ -108,31 +190,68 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · **GATE** decision point
 Build the ablation arms **first**. They are the deliverable your guide asked for,
 not an appendix, and they give you a working number early.
 
-- [ ] **Data loader + preprocessing** — *2 d* **[A]**
-  Tokenisation (MuRIL), image transforms, caption + OCR text concatenation strategy (document what you chose — separator token vs. plain concat matters).
-- [ ] **Text-only baseline (MuRIL)** — *2 d* **[A]**
+> **2026-08-15 — the scaffolding for this phase is written and the non-torch
+> parts are tested (78 new assertions).** What exists: `src/fipd/datasets/`
+> (records → examples, torch dataset), `src/fipd/models/` (encoders, arms,
+> cross-attention fusion, budget), `src/fipd/training/` (metrics, loop,
+> aggregation), and `scripts/07_ablation.py`. What has NOT happened: nothing has
+> been trained, because there is no negative class yet (Gate 2) and torch is not
+> installed on this machine. The arms are unverified against real tensors —
+> treat the shapes as unproven until a smoke run passes.
+
+- [x] **Data loader + preprocessing** — *2 d* **[A]**
+  `datasets/examples.py` (split-aware, drops `unknown` rather than treating it
+  as a negative, picks the creative over the fact-checker's verdict stamp) and
+  `datasets/torch_data.py`. Concatenation strategy is documented and configured
+  in `configs/model.yaml`: explicit `[SEP]`, **OCR text first** so truncation
+  eats the caption rather than the claim.
+- [ ] **Text-only baseline (MuRIL)** — *2 d* **[A]** — arm builds; needs data + a run
 - [ ] **Text-only baseline (IndicBERT)** — *1 d* — pick the better one, report both.
-- [ ] **Image-only baseline (ViT)** — *2 d* **[B]**
+- [ ] **Image-only baseline (ViT)** — *2 d* **[B]** — arm builds; needs data + a run
 - [ ] **Image-only baseline (CLIP)** — *1 d* **[B]**
-- [ ] **Training loop + W&B logging + checkpointing** — *2 d*
-  Log seeds and configs from day one; you will need them for the paper.
-- [ ] **Cross-attention fusion model** — *3–4 d* **[A]**
+- [~] **Training loop + W&B logging + checkpointing** — *2 d*
+  `training/loop.py` — seeded, class-weighted, early-stops on val macro-F1,
+  picks the decision threshold on **validation** and freezes it, records the
+  split-manifest hash with every run. **W&B is not wired up yet.**
+- [~] **Cross-attention fusion model** — *3–4 d* **[A]**
+  `models/arms.py` — bidirectional cross-attention plus a concat-fusion
+  baseline, because if attention does not beat concatenation it is not earning
+  its parameters and that belongs in the report. Untrained and unverified.
 - [ ] **Hyperparameter sweep** — *2 d* (W&B sweeps; keep it modest, Colab has limits)
 
 ### Evaluation — get the metrics right
 
-- [ ] **Report precision, recall, F1, PR-AUC — not accuracy** — *1 d*
-  Accuracy is close to meaningless on imbalanced fraud data.
-- [ ] **Precision–recall curve across thresholds** — a detector that flags everything has perfect recall and no value.
-- [ ] **Confusion matrices per arm** — *0.5 d*
-- [ ] **Run the ablation table: text-only vs image-only vs fused** — *1 d*
-  This is what Dr. Surati specifically asked for. Report the *difference*, with the sign and magnitude, not just three numbers.
-- [ ] **Statistical significance** — *0.5 d*
-  3–5 seeds per arm, report mean ± std. A 1% gain on one seed is noise.
+- [x] **Report precision, recall, F1, PR-AUC — not accuracy** — *1 d*
+  `training/metrics.py`. Accuracy is computed but never headline, and every
+  result carries the majority-class baseline next to it — a number only means
+  something beside what you would get for free. Cross-checked against sklearn
+  in the test suite: two independent implementations agreeing is evidence.
+- [x] **Precision–recall curve across thresholds** — `pr_curve` / `pr_auc`,
+  step-wise average precision rather than the optimistically biased trapezoid.
+- [x] **Confusion matrices per arm** — *0.5 d* — on every `Metrics` object.
+- [x] **Run the ablation table: text-only vs image-only vs fused** — *1 d*
+  `ablation_table()` prints the delta with its sign and magnitude against the
+  text-only baseline, plus fused-minus-best-single-modality, and says
+  "within seed noise" when the gap is smaller than the seed spread.
+  **The table is built; it has no numbers in it until something is trained.**
+- [x] **Statistical significance** — *0.5 d*
+  `aggregate()` reports mean ± std over seeds; three seeds are configured by
+  default. Nothing gets reported without it.
 
-- [ ] **GATE 4 — The targeted experiment** — *1–2 d*
+- [~] **GATE 4 — The targeted experiment** — *1–2 d*
   Build an evaluation subset of posts where **the caption is benign and the claim is image-only**. If fusion doesn't beat text-only *there*, the central thesis is not demonstrated regardless of overall F1.
   *This is the single most convincing experiment in the project.* Budget real time for it.
+  **2026-08-15:** the subset filter exists (`is_image_only_claim`) and
+  `scripts/07_ablation.py --image-only-claims` runs the experiment on it.
+  **One caveat that has to go in the limitations section:** fact-check archives
+  do not publish the original post's caption. The closest field is `claim_text`,
+  the fact-checker's own rendering of the viral claim, and that is what the
+  filter scores. The article *title* is deliberately excluded — it is the
+  fact-checker's headline and almost always names the scam outright ("Viral post
+  falsely claims SEBI approved this app"), which would make every caption look
+  informative and leave this subset permanently empty. So the filter is a proxy
+  for a benign caption, not a measurement of one. **Hand-check the members
+  before any claim rests on them.**
 
 - [ ] **Error analysis** — *1 d*
   Pull 30 failures. Categorise them. What kind of fraud does it miss, and why? Reviewers read this section closely.
@@ -161,11 +280,15 @@ Feasibility risk lives here. Set the decision point before you start building.
 
 - [ ] **Measure the teacher model first** — *0.5 d*
   Params, size in MB, CPU and GPU latency. You cannot claim a reduction without a baseline.
+  Tooling is ready: `python scripts/06_budget.py --arm fused --variant teacher
+  --from-scratch` measures the architecture without downloading any weights.
 - [ ] **Knowledge distillation into a student** — *3–4 d* **[A]**
 - [ ] **ONNX export** — *1 d*
 - [ ] **Quantisation (INT8) + ONNX Runtime benchmark** — *1 d*
 - [ ] **Report the size/latency/accuracy tradeoff table** — *0.5 d*
-  This is what turns "lightweight" from an adjective into a result. Check it against the targets you set in Phase 0.
+  This is what turns "lightweight" from an adjective into a result. Check it
+  against the targets set in Phase 0 — they are now real numbers in
+  `configs/model.yaml`, and `scripts/06_budget.py` prints the pass/fail table.
 - [ ] **FastAPI backend** — *2 d* **[B]**
 - [ ] **Streamlit frontend** — *2 d* **[B]**
   Upload a screenshot → OCR → prediction → confidence → which modality drove it. The last part demos well and shows the fusion is doing something.
@@ -213,5 +336,7 @@ Both: manual annotation sample, evaluation, writing.
 
 ---
 
-*Phase 1 pipeline is complete: 23 files, 2,164 lines, 56 tests passing.
-Everything above is what remains.*
+*Phase 1 pipeline is complete. Phase 2 scaffolding (datasets, models, training,
+budget) is written and its non-torch parts are tested: 250 assertions passing,
+all offline. Everything still unticked above is what remains — and the two that
+block everything else are Gate 1 (yield) and Gate 2 (negative class).*

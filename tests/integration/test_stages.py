@@ -21,6 +21,10 @@ sys.path.insert(0, str(ROOT))
 
 from tests.fixtures.mock_server import ROOT as MOCK, serve  # noqa: E402
 
+from fipd.utils.logging_setup import use_utf8_stdout  # noqa: E402
+
+use_utf8_stdout()  # stage subprocesses log Hindi titles; a cp1252 console would crash
+
 PASS = FAIL = 0
 
 

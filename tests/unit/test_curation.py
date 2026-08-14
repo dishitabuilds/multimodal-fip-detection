@@ -32,6 +32,9 @@ from fipd.enrichment.translit import (  # noqa: E402
     romanised_to_devanagari,
 )
 from fipd.schema.records import FactCheckRecord, ImageAsset  # noqa: E402
+from fipd.utils.logging_setup import use_utf8_stdout  # noqa: E402
+
+use_utf8_stdout()  # these tests print Devanagari; a cp1252 console would crash
 
 PASS = FAIL = 0
 

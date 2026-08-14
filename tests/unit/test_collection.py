@@ -12,13 +12,22 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT_DIR / "src"))
 sys.path.insert(0, str(ROOT_DIR))
 
+from bs4 import BeautifulSoup  # noqa: E402
+
 from tests.fixtures.mock_server import ROOT, serve  # noqa: E402
 
 from fipd.collection.article import ArticleScraper  # noqa: E402
+from fipd.collection.jsonld import (  # noqa: E402
+    claimreview_from_html,
+    extract_claimreview,
+)
 from fipd.collection.wordpress import WordPressScraper  # noqa: E402
 from fipd.curation.finance_filter import score_record, score_text  # noqa: E402
 from fipd.curation.labels import assign_label, map_verdict  # noqa: E402
 from fipd.schema.records import FactCheckRecord  # noqa: E402
+from fipd.utils.logging_setup import use_utf8_stdout  # noqa: E402
+
+use_utf8_stdout()  # these tests print Devanagari; a cp1252 console would crash
 
 PASS, FAIL = 0, 0
 
@@ -144,9 +153,54 @@ def main() -> int:
     check(assign_label(FactCheckRecord(source="x", source_id="2", url="",
                                        title="Yes, this SEBI circular is authentic")) == "real",
           "title fallback recognises true claims")
+    check(assign_label(FactCheckRecord(
+        source="x", source_id="3", url="",
+        title="Viral Facebook ads promoting an investment scheme are fake")) == "fake",
+        "title fallback handles plural subjects ('ads ... are fake')")
 
     # ---------------------------------------------------------------
-    print("\n[6] Persistence + resume")
+    print("\n[6] ClaimReview recovery")
+    # The WordPress REST API carries no verdict, so it is read from the
+    # article page instead. Two markup routes have to work: a plain ld+json
+    # tag, and the escaped payload a Next.js app-router site streams instead.
+    tag_html = """
+    <html><head><script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"ClaimReview",
+     "claimReviewed":"This trading app is SEBI approved",
+     "reviewRating":{"@type":"Rating","alternateName":"False"},
+     "headline":"No, this app is not SEBI approved"}
+    </script></head><body>x</body></html>"""
+    cr = claimreview_from_html(tag_html)
+    check(cr.get("verdict") == "False", "verdict read from an ld+json tag",
+          f"got {cr.get('verdict')!r}")
+    check("SEBI approved" in cr.get("claim", ""), "claim read from an ld+json tag")
+    check(map_verdict(cr.get("verdict", "")) == "fake", "recovered verdict maps to a label")
+
+    # Newschecker's shape: no ld+json tag at all, the object arrives escaped
+    # inside self.__next_f.push([...]) and is injected client-side.
+    inner = ('{\\"@context\\":\\"https://schema.org\\",\\"@type\\":\\"ClaimReview\\",'
+             '\\"claimReviewed\\":\\"Rahul Gandhi promoted an investment scheme\\",'
+             '\\"reviewRating\\":{\\"alternateName\\":\\"Altered Photo/Video\\"}}')
+    next_html = ('<html><body><script>self.__next_f.push([1,"8:[[\\"$\\",\\"$L17\\",null,'
+                 '{\\"type\\":\\"application/ld+json\\",\\"dangerouslySetInnerHTML\\":'
+                 '{\\"__html\\":\\"' + inner + '\\"}}]]"])</script></body></html>')
+    check(extract_claimreview(BeautifulSoup(next_html, "html.parser")) == {},
+          "the tag route finds nothing on a Next.js page — as it did in production")
+    nx = claimreview_from_html(next_html)
+    check(nx.get("verdict") == "Altered Photo/Video",
+          "verdict recovered from the Next.js payload", f"got {nx.get('verdict')!r}")
+    check("Rahul Gandhi" in nx.get("claim", ""), "claim recovered from the Next.js payload")
+    check(map_verdict(nx.get("verdict", "")) == "fake",
+          "'Altered Photo/Video' maps to fake")
+
+    check(claimreview_from_html("") == {}, "empty HTML yields no verdict")
+    check(claimreview_from_html("<html><body>no markup</body></html>") == {},
+          "a page with no ClaimReview yields no verdict, rather than a guess")
+    check(claimreview_from_html('<script>self.__next_f.push([1,"ClaimReview broken')
+          == {}, "malformed payload returns empty instead of raising")
+
+    # ---------------------------------------------------------------
+    print("\n[7] Persistence + resume")
     out = wp.run(with_images=False, per_page=50)
     n1 = sum(1 for _ in open(out, encoding="utf-8"))
     out = wp.run(with_images=False, per_page=50)   # second run should add nothing

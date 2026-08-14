@@ -32,7 +32,12 @@ def build_scraper(name: str, cfg: dict, defaults: dict) -> BaseScraper | None:
     }
 
     if kind == "wordpress":
-        return WordPressScraper(name=name, base_url=cfg["base_url"], **common)
+        return WordPressScraper(
+            name=name,
+            base_url=cfg["base_url"],
+            enrich_verdicts=cfg.get("enrich_verdicts", True),
+            **common,
+        )
     if kind == "article":
         return ArticleScraper(
             name=name,
@@ -49,6 +54,24 @@ def build_scraper(name: str, cfg: dict, defaults: dict) -> BaseScraper | None:
 
     log.error("Unknown source kind %r for %s", kind, name)
     return None
+
+
+def fallback_config(cfg: dict) -> dict | None:
+    """Merge a source's `fallback:` block over its own config.
+
+    Several archives publish a WP REST API that is unreachable from some
+    networks — Cloudflare 403 on Factly, an auth-walled 401 on Vishvas News —
+    while their sitemaps stay open. The fallback block says how to reach the
+    same archive the other way; this turns it into a usable source config.
+
+    Returns None when the source declares no fallback.
+    """
+    fb = cfg.get("fallback")
+    if not fb:
+        return None
+    merged = {k: v for k, v in cfg.items() if k != "fallback"}
+    merged.update(fb)
+    return merged
 
 
 def run_kwargs(cfg: dict) -> dict:

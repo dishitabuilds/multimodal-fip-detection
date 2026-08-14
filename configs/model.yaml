@@ -1,0 +1,140 @@
+# Model architecture, training and — most importantly — the lightweight budget.
+#
+# The title of this project claims the model is "lightweight". That word is
+# unfalsifiable until it is a number measured under stated conditions, so the
+# budget below is the definition, and scripts/08_budget.py is the test of it.
+
+# ---------------------------------------------------------------------------
+# The lightweight budget
+# ---------------------------------------------------------------------------
+#
+# These apply to the DEPLOYED (student, INT8) model — the artefact someone
+# would actually run. The teacher is measured too, but only as the baseline the
+# reduction is quoted against; it is not expected to pass.
+#
+# Where the numbers come from:
+#
+#   params      50 M is roughly the largest model that still quantises to under
+#               100 MB at INT8 (1 byte/param + overhead). It is also about the
+#               size of a 4-layer transformer over a vocabulary pruned to the
+#               tokens this corpus actually uses; full MuRIL is 238 M, of which
+#               151 M is a 197k-entry embedding table we do not need.
+#
+#   disk        100 MB keeps the model inside a free-tier container image and
+#               inside the practical limit for a single HTTP download.
+#
+#   latency     100 ms p50 is the threshold below which a screenshot upload
+#               feels instant to the person who pasted it. p95 is allowed 250 ms
+#               because tail latency on a shared CPU is mostly scheduling noise.
+#
+#   peak RAM    1 GB is the Streamlit Community Cloud limit, which is where the
+#               demo is meant to run.
+#
+#   retention   Without this row the budget is trivially satisfiable by a model
+#               that predicts one class in 3 ms. The student must keep at least
+#               95% of the teacher's macro-F1 for the compression to count.
+#
+# A run that misses a target is not a failure to hide — it is the size/latency/
+# accuracy tradeoff table that Phase 4 of docs/CHECKLIST.md asks for. Record it.
+
+budget:
+  max_params_m: 50.0          # millions of parameters
+  max_disk_mb: 100.0          # serialised INT8 model on disk
+  max_latency_p50_ms: 100.0   # median, single sample
+  max_latency_p95_ms: 250.0   # 95th percentile, single sample
+  max_peak_ram_mb: 1024.0     # peak RSS during inference
+  min_f1_retention: 0.95      # student macro-F1 / teacher macro-F1
+
+# Conditions under which the latency numbers above are meaningful. A latency
+# figure without these is not comparable to anything, including itself.
+measurement:
+  batch_size: 1
+  threads: 4                  # a free-tier container gets 2-4, not a whole laptop
+  image_size: 224
+  max_text_tokens: 128
+  warmup_runs: 10             # first calls pay lazy-init and cache-warming costs
+  timed_runs: 100
+  precision: int8             # fp32 | int8 — fp32 is also recorded, for the table
+  # Reference machine for the headline numbers in the report. Re-measuring on
+  # different hardware is fine; quoting across hardware is not.
+  reference_machine: "Intel Core 7 150U, 12 threads, 24 GB RAM, Windows 11"
+
+# ---------------------------------------------------------------------------
+# Architecture
+# ---------------------------------------------------------------------------
+model:
+  # The teacher: full-size encoders, fused. Accuracy ceiling, not deployable.
+  teacher:
+    text_encoder: google/muril-base-cased      # 238 M params
+    image_encoder: google/vit-base-patch16-224 #  86 M params
+    fusion: cross_attention
+    hidden_dim: 768
+    fusion_heads: 8
+    fusion_layers: 2
+    dropout: 0.1
+
+  # The student: what Phase 4 distils into and what the budget above judges.
+  student:
+    text_encoder: distilbert-base-multilingual-cased
+    image_encoder: WinKawaks/vit-small-patch16-224
+    fusion: cross_attention
+    hidden_dim: 384
+    fusion_heads: 6
+    fusion_layers: 1
+    dropout: 0.1
+
+  # Ablation arms. These are the deliverable, not an appendix — build them
+  # first (docs/CHECKLIST.md, Phase 2).
+  arms: [text_only, image_only, fused]
+
+# ---------------------------------------------------------------------------
+# Text assembly
+# ---------------------------------------------------------------------------
+# The caption and the OCR'd in-image text are different evidence and the model
+# should be able to tell them apart, so they are joined with an explicit
+# separator rather than concatenated. Changing this changes what the text arm
+# sees; if you change it, re-run the ablation, do not compare across settings.
+#
+# Field ORDER matters and is not alphabetical: ocr_text comes first so that
+# truncation at the tokeniser's max length eats the caption, not the claim.
+# The whole premise of the project is that the claim is inside the image.
+text:
+  fields: [ocr_text, claim_text, title]
+  separator: " [SEP] "
+  max_chars: 2000
+  lowercase: false            # MuRIL is cased; lowercasing throws away signal
+  transliterate: true         # fold romanised Hindi into Devanagari (Phase 1.2)
+
+# ---------------------------------------------------------------------------
+# Training
+# ---------------------------------------------------------------------------
+training:
+  seeds: [13, 42, 1337]       # >=3 seeds; a one-seed gain is noise
+  epochs: 8
+  batch_size: 16
+  lr: 2.0e-5
+  head_lr: 1.0e-4             # the randomly-initialised head can move faster
+  weight_decay: 0.01
+  warmup_ratio: 0.1
+  max_grad_norm: 1.0
+  early_stopping_patience: 3
+  # Fraud data is imbalanced; optimise for the minority class, not accuracy.
+  monitor: val_macro_f1
+  class_weighting: balanced
+  mixed_precision: true
+  num_workers: 2
+
+evaluation:
+  # Accuracy is deliberately absent from the headline metrics. On imbalanced
+  # fraud data it mostly reports the majority-class rate.
+  metrics: [precision, recall, f1, macro_f1, pr_auc, roc_auc]
+  positive_label: fake
+  # Threshold used for the reported confusion matrix. The PR curve across all
+  # thresholds is reported alongside it — a detector that flags everything has
+  # perfect recall and no value.
+  decision_threshold: 0.5
+
+distillation:
+  temperature: 4.0
+  alpha_kd: 0.7               # weight on the teacher's soft targets
+  alpha_ce: 0.3               # weight on the hard labels

@@ -6,6 +6,8 @@ data/images/*
 data/interim/*
 data/processed/*
 data/.httpcache/
+data/checkpoints/
+data/*.log
 !data/**/.gitkeep
 
 # --- secrets ---

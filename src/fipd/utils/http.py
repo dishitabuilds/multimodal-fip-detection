@@ -2,6 +2,7 @@
 
 Design goals:
   * never hammer a fact-checker's server (they are small non-profits)
+  * obey robots.txt, including any Crawl-delay it declares
   * survive transient 5xx / connection resets without losing a whole run
   * cache raw responses on disk so re-parsing does not mean re-fetching
 """
@@ -14,6 +15,8 @@ import random
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
+from urllib.robotparser import RobotFileParser
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -38,6 +41,7 @@ class PoliteSession:
         cache_dir: str | Path | None = None,
         user_agent: str = DEFAULT_UA,
         max_retries: int = 4,
+        respect_robots: bool = True,
     ) -> None:
         self.min_delay = min_delay
         self.max_delay = max_delay
@@ -46,6 +50,8 @@ class PoliteSession:
         if self.cache_dir:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
 
+        self.respect_robots = respect_robots
+        self._robots: dict[str, RobotFileParser | None] = {}
         self._last_request_at = 0.0
         self.session = requests.Session()
         self.session.headers.update(
@@ -74,6 +80,61 @@ class PoliteSession:
             time.sleep(wait)
         self._last_request_at = time.time()
 
+    # ------------------------------------------------------------------
+    # robots.txt
+    # ------------------------------------------------------------------
+    def _robots_for(self, url: str) -> RobotFileParser | None:
+        """Fetch and memoise the robots.txt for this URL's origin.
+
+        `None` means "nothing to honour" — no robots.txt published, or it
+        could not be read. A site that publishes no rules is not asking for
+        anything, so we fall back to our own delays rather than refusing.
+        """
+        parts = urlsplit(url)
+        origin = f"{parts.scheme}://{parts.netloc}"
+        if origin in self._robots:
+            return self._robots[origin]
+
+        rp: RobotFileParser | None = RobotFileParser()
+        try:
+            r = self.session.get(f"{origin}/robots.txt", timeout=self.timeout)
+            if r.status_code == 200:
+                rp.parse(r.text.splitlines())
+                log.info("robots.txt loaded for %s", origin)
+            else:
+                log.info("no robots.txt at %s (HTTP %s)", origin, r.status_code)
+                rp = None
+        except requests.RequestException as e:
+            log.warning("robots.txt unreachable at %s -> %s", origin, e)
+            rp = None
+
+        self._robots[origin] = rp
+        return rp
+
+    def allowed(self, url: str) -> bool:
+        """Whether robots.txt permits us to fetch this URL."""
+        if not self.respect_robots:
+            return True
+        rp = self._robots_for(url)
+        if rp is None:
+            return True
+
+        ua = self.session.headers.get("User-Agent", "*")
+        if not rp.can_fetch(ua, url):
+            return False
+
+        # A declared Crawl-delay longer than ours wins. Never shorten our own.
+        try:
+            declared = rp.crawl_delay(ua)
+        except (AttributeError, ValueError):
+            declared = None
+        if declared and declared > self.min_delay:
+            log.info("robots.txt Crawl-delay %.1fs > configured %.1fs, using theirs",
+                     declared, self.min_delay)
+            self.min_delay = float(declared)
+            self.max_delay = max(self.max_delay, float(declared) + 1.0)
+        return True
+
     def _cache_path(self, url: str, suffix: str) -> Path | None:
         if not self.cache_dir:
             return None
@@ -85,6 +146,10 @@ class PoliteSession:
         cp = self._cache_path(url, ".txt")
         if use_cache and cp and cp.exists():
             return cp.read_text(encoding="utf-8")
+
+        if not self.allowed(url):
+            log.warning("robots.txt disallows %s — skipped", url)
+            return None
 
         self._throttle()
         try:
@@ -112,6 +177,10 @@ class PoliteSession:
             if hp and hp.exists():
                 headers = json.loads(hp.read_text(encoding="utf-8"))
             return json.loads(cp.read_text(encoding="utf-8")), headers
+
+        if not self.allowed(url):
+            log.warning("robots.txt disallows %s — skipped", url)
+            return None, {}
 
         self._throttle()
         try:
@@ -143,6 +212,10 @@ class PoliteSession:
         if dest.exists() and dest.stat().st_size > 0:
             return True
         dest.parent.mkdir(parents=True, exist_ok=True)
+
+        if not self.allowed(url):
+            log.warning("robots.txt disallows image %s — skipped", url)
+            return False
 
         self._throttle()
         try:

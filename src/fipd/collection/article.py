@@ -14,7 +14,6 @@ Open Graph tags and the article body.
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from typing import Iterator
@@ -23,6 +22,7 @@ from xml.etree import ElementTree as ET
 from bs4 import BeautifulSoup
 
 from .base import BaseScraper
+from .jsonld import extract_claimreview, iter_jsonld
 from ..schema.records import FactCheckRecord
 
 log = logging.getLogger(__name__)
@@ -101,42 +101,10 @@ class ArticleScraper(BaseScraper):
     # ------------------------------------------------------------------
     # Stage 2: article parsing
     # ------------------------------------------------------------------
-    @staticmethod
-    def _iter_jsonld(soup: BeautifulSoup) -> Iterator[dict]:
-        for tag in soup.find_all("script", type="application/ld+json"):
-            try:
-                data = json.loads(tag.string or tag.get_text() or "{}")
-            except (json.JSONDecodeError, TypeError):
-                continue
-            items = data if isinstance(data, list) else [data]
-            for item in items:
-                if not isinstance(item, dict):
-                    continue
-                yield item
-                for sub in item.get("@graph", []) or []:
-                    if isinstance(sub, dict):
-                        yield sub
-
-    def _extract_claimreview(self, soup: BeautifulSoup) -> dict:
-        """Return {claim, verdict, published, title} from ClaimReview if present."""
-        for item in self._iter_jsonld(soup):
-            if item.get("@type") not in ("ClaimReview", ["ClaimReview"]):
-                continue
-            rating = item.get("reviewRating") or {}
-            claim = item.get("claimReviewed") or ""
-            appearance = item.get("itemReviewed") or {}
-            if not claim and isinstance(appearance, dict):
-                claim = appearance.get("name", "")
-            return {
-                "claim": claim if isinstance(claim, str) else "",
-                "verdict": (rating.get("alternateName") or rating.get("name") or ""),
-                "rating_value": rating.get("ratingValue"),
-                "worst_rating": rating.get("worstRating"),
-                "best_rating": rating.get("bestRating"),
-                "published": item.get("datePublished", ""),
-                "title": (item.get("headline") or ""),
-            }
-        return {}
+    # ClaimReview parsing lives in .jsonld so the WordPress scraper can reuse
+    # it — its REST route carries no verdict, and the article page does.
+    _iter_jsonld = staticmethod(iter_jsonld)
+    _extract_claimreview = staticmethod(extract_claimreview)
 
     def _extract_article_meta(self, soup: BeautifulSoup) -> dict:
         for item in self._iter_jsonld(soup):

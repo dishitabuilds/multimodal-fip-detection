@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SUITES = [
     ("collection / filtering / labelling", "tests/unit/test_collection.py"),
     ("dedup / splits / OCR / translit", "tests/unit/test_curation.py"),
+    ("budget / metrics / examples", "tests/unit/test_models.py"),
     ("pipeline integration", "tests/integration/test_stages.py"),
 ]
 

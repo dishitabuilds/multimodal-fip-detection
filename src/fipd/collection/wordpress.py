@@ -9,6 +9,15 @@ Two collection modes:
   * `search`  — run a keyword query (best for pulling finance content out of a
                 mostly-political archive)
   * `browse`  — walk a category or the whole archive in date order
+
+One thing the REST API does NOT give us is the verdict. There is no rating
+field in /wp-json/wp/v2/posts, so every record arrives with an empty
+`verdict_raw` and is dropped downstream as unlabelled — on a real run that was
+217 of 269 finance-relevant records, 81% of the yield. The verdict is published,
+just not there: it sits in ClaimReview markup on the article page. So when a
+post arrives without one, we fetch the page and read it (`enrich_verdicts`,
+on by default). It costs one extra request per record and the responses are
+cached.
 """
 
 from __future__ import annotations
@@ -20,6 +29,7 @@ from typing import Iterator
 from urllib.parse import urlencode
 
 from .base import BaseScraper
+from .jsonld import claimreview_from_html
 from ..schema.records import FactCheckRecord
 
 log = logging.getLogger(__name__)
@@ -32,13 +42,17 @@ def _unescape(s: str) -> str:
 class WordPressScraper(BaseScraper):
     """Collect posts from any WordPress-backed fact-check site."""
 
-    def __init__(self, name: str, base_url: str, **kw) -> None:
+    def __init__(self, name: str, base_url: str, enrich_verdicts: bool = True, **kw) -> None:
         self.name = name
         self.base_url = base_url.rstrip("/")
         super().__init__(**kw)
         self.api = f"{self.base_url}/wp-json/wp/v2"
+        self.enrich_verdicts = enrich_verdicts
         self._category_cache: dict[int, str] | None = None
         self._tag_cache: dict[int, str] = {}
+        #: counters for the run summary — how much the extra fetch bought us
+        self.n_verdicts_recovered = 0
+        self.n_verdict_lookups = 0
 
     # ------------------------------------------------------------------
     def categories(self) -> dict[int, str]:
@@ -105,6 +119,32 @@ class WordPressScraper(BaseScraper):
         )
 
     # ------------------------------------------------------------------
+    def _recover_verdict(self, record: FactCheckRecord) -> None:
+        """Fill an empty verdict from the article page's ClaimReview markup.
+
+        Mutates the record in place and leaves it untouched when the page has
+        no ClaimReview — plenty of these posts are explainers and media analysis
+        with no verdict to find, and an absent verdict must stay absent rather
+        than be guessed at.
+        """
+        if record.verdict_raw or not record.url:
+            return
+
+        self.n_verdict_lookups += 1
+        html = self.http.get_text(record.url, use_cache=self.use_cache)
+        cr = claimreview_from_html(html or "")
+        if not cr.get("verdict"):
+            return
+
+        record.verdict_raw = cr["verdict"]
+        # The ClaimReview claim is the viral claim as the fact-checker stated
+        # it — closer to the original post than the WP excerpt, so prefer it.
+        if cr.get("claim"):
+            record.claim_text = cr["claim"]
+        record.raw["verdict_source"] = "claimreview"
+        self.n_verdicts_recovered += 1
+
+    # ------------------------------------------------------------------
     def iter_records(
         self,
         limit: int | None = None,
@@ -153,12 +193,24 @@ class WordPressScraper(BaseScraper):
                     if pid in seen_ids:
                         continue
                     seen_ids.add(pid)
-                    yield self._to_record(post)
+                    record = self._to_record(post)
+                    if self.enrich_verdicts:
+                        self._recover_verdict(record)
+                    yield record
                     emitted += 1
                     if limit and emitted >= limit:
+                        self._log_recovery()
                         return
                 log.info("[%s] query=%s page %d/%s (%d posts)",
                          self.name, label, page, total_pages or "?", len(posts))
                 if total_pages and page >= total_pages:
                     break
                 page += 1
+
+        self._log_recovery()
+
+    def _log_recovery(self) -> None:
+        if self.n_verdict_lookups:
+            log.info("[%s] verdicts recovered from ClaimReview: %d of %d posts "
+                     "that arrived without one", self.name,
+                     self.n_verdicts_recovered, self.n_verdict_lookups)

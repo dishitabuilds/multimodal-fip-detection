@@ -27,8 +27,28 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _bootstrap  # noqa: F401,E402
 
-from fipd.collection.registry import build_scraper, load_config, run_kwargs  # noqa: E402
+from fipd.collection.registry import (  # noqa: E402
+    build_scraper,
+    fallback_config,
+    load_config,
+    run_kwargs,
+)
 from fipd.utils.logging_setup import setup as setup_logging  # noqa: E402
+
+
+def _collect_one(name, scfg, defaults, args, log):
+    """Run one source. Returns (records_written, output_path_or_error)."""
+    scraper = build_scraper(name, scfg, defaults)
+    if scraper is None:
+        return 0, "no scraper built"
+
+    out = scraper.run(
+        limit=args.limit,
+        with_images=not args.no_images,
+        **run_kwargs(scfg),
+    )
+    n = sum(1 for _ in open(out, encoding="utf-8")) if out.exists() else 0
+    return n, out
 
 
 def main() -> int:
@@ -37,6 +57,8 @@ def main() -> int:
     ap.add_argument("--source", action="append", help="only run these sources (repeatable)")
     ap.add_argument("--limit", type=int, default=None, help="max records per source")
     ap.add_argument("--no-images", action="store_true", help="skip image downloads")
+    ap.add_argument("--no-fallback", action="store_true",
+                    help="do not retry a blocked source via its fallback config")
     ap.add_argument("--out-dir", default=None, help="override output directory")
     ap.add_argument("--log-file", default=None, help="also write logs here")
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -67,16 +89,8 @@ def main() -> int:
         log.info("Source: %s (%s)", name, scfg.get("kind"))
         log.info("=" * 62)
 
-        scraper = build_scraper(name, scfg, defaults)
-        if scraper is None:
-            continue
-
         try:
-            out = scraper.run(
-                limit=args.limit,
-                with_images=not args.no_images,
-                **run_kwargs(scfg),
-            )
+            n, out = _collect_one(name, scfg, defaults, args, log)
         except KeyboardInterrupt:
             log.warning("Interrupted — partial results kept in data/raw/")
             return 130
@@ -85,7 +99,22 @@ def main() -> int:
             summary.append((name, 0, f"FAILED: {e}"))
             continue
 
-        n = sum(1 for _ in open(out, encoding="utf-8")) if out.exists() else 0
+        # A source that produced nothing at all is usually blocked rather than
+        # empty — Cloudflare 403, or a REST API behind auth. If it declares a
+        # fallback route into the same archive, take it automatically instead
+        # of making someone notice the zero and edit the config by hand.
+        if n == 0 and not args.no_fallback:
+            fb = fallback_config(scfg)
+            if fb:
+                log.warning("[%s] produced 0 records — retrying via %s fallback",
+                            name, fb.get("kind"))
+                try:
+                    n, out = _collect_one(name, fb, defaults, args, log)
+                    if n:
+                        log.info("[%s] fallback recovered %d records", name, n)
+                except Exception as e:  # noqa: BLE001
+                    log.exception("Source %s fallback failed: %s", name, e)
+
         summary.append((name, n, str(out)))
 
     print("\n" + "=" * 62)
