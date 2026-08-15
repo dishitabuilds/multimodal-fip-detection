@@ -2,12 +2,15 @@
 # Trailing /* not / — excluding the directory itself would make the .gitkeep
 # negation below a no-op, and a fresh clone would come up without data/ dirs.
 data/raw/*
+data/raw_*/
 data/images/*
 data/interim/*
 data/processed/*
 data/.httpcache/
 data/checkpoints/
+data/enriched/
 data/*.log
+data/*.out
 !data/**/.gitkeep
 
 # --- secrets ---

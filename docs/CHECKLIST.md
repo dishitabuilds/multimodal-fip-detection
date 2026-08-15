@@ -30,32 +30,51 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · **GATE** decision point
   `python scripts/04_curate.py`
   *Decide:* if finance-labelled items are **under ~500**, the fact-check archives are a seed and evaluation set only, and Telegram collection moves from Phase 3 to Phase 1. Write the number down; it goes in the report.
 
-  **First measurement, 2026-08-15** — 400 records/source cap, no images, no OCR:
+  **Measured 2026-08-15/16** — 400 records/source cap, no OCR. The "before"
+  column is the same corpus before the verdict fix below, kept because the
+  difference is the result:
 
-  | source | raw | finance | labelled+finance |
-  |---|---|---|---|
-  | newschecker | 177 | 80 | 20 |
-  | factly | 400 | 143 | 14 |
-  | vishvasnews | 400 | 14 | 13 |
-  | altnews | 223 | 32 | 5 |
-  | boomlive | 8 | 0 | 0 |
-  | **total** | **1208** | **269** | **52** |
+  | source | raw | finance | usable, before | usable, after |
+  |---|---|---|---|---|
+  | newschecker | 177 | 75 | 20 | **52** |
+  | altnews | 223 | 30 | 5 | **20** |
+  | factly | 400 | 143 | 14 | **15** |
+  | vishvasnews | 400 | 14 | 13 | **13** |
+  | boomlive | 8 | 0 | 0 | **0** |
+  | **total** | **1208** | **262** | **52** | **100** |
 
-  **52 usable items from 1208 collected — a 4.3% end-to-end yield.** All 52 are
-  labelled `fake` (Gate 2 confirmed empirically, not just suspected).
+  **100 usable items from 1208 collected — an 8.3% end-to-end yield**, up from
+  4.3% before the verdict fix. All 100 are labelled `fake`: **Gate 2 is now
+  confirmed empirically, not merely suspected.**
 
-  This is provisional and the true number is higher, for three reasons:
-  1. **The verdict bug below cost 81% of the yield** and is now fixed; the
-     re-run should land nearer **~113**.
-  2. **No OCR yet.** The finance filter is scoring captions and body text only.
+  Two things would still move the number:
+  1. **No OCR yet.** The finance filter is scoring captions and body text only.
      Yield should rise once `ocr_text` is populated — measure by how much, it
      is a result worth reporting.
-  3. **Capped at 400/source.** Not a full harvest.
+  2. **Capped at 400/source**, and Factly contributes only 15 usable items from
+     400 raw because it publishes no machine-readable verdict.
 
-  Even at ~113 this is far short of 500, so **plan for Gate 1 to fail**: the
-  archives look like a seed and evaluation set, and Telegram collection should
-  be expected to move into Phase 1. Do not treat that as decided until the
-  re-run with OCR gives a real number.
+  **Read the decision as: Gate 1 fails.** 100 against a threshold of ~500, and
+  the remaining levers are worth perhaps a small multiple, not 5x. Treat the
+  fact-check archives as a seed and evaluation set, and **plan for Telegram
+  collection to move from Phase 3 into Phase 1.** Confirm with Dr. Surati
+  before committing the schedule, but do not plan as though this will improve.
+
+  **After image enrichment** (`02_enrich_images.py` over the 100, 276 images
+  fetched, zero failures) the multimodal-ready set is **79 records, every one
+  with an image**:
+
+  | source | records | with image | usable |
+  |---|---|---|---|
+  | newschecker | 52 | 52 | 43 |
+  | factly | 15 | 15 | 14 |
+  | vishvasnews | 13 | 13 | 13 |
+  | altnews | 20 | 20 | 9 |
+  | **total** | **100** | **100** | **79** |
+
+  Frozen split: 61 train / 9 val / 9 test over 60 clusters, leakage check
+  PASS, manifest hash `71ca28d778777ff1`. **Still 100% one class**, so this is
+  a pipeline rehearsal, not a trainable dataset.
 
 - [x] **Fix the verdict loss in the WordPress route** — *found and fixed 2026-08-15*
   **217 of 269 finance-relevant records (81%) were being dropped as unlabelled,
@@ -64,14 +83,15 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · **GATE** decision point
   any WP-sourced record. The verdict was published all along, in ClaimReview
   markup on the article page the REST route never fetched.
   Now recovered by fetching the article when a post arrives without a verdict
-  (one extra cached request per record). Measured recovery, on a 272-record
-  sample:
+  (one extra cached request per record). Measured on the full corpus:
 
   | source | recovered | how |
   |---|---|---|
-  | newschecker | **75 / 100** | Next.js streamed payload |
-  | altnews | **60 / 100** | plain `ld+json` tag |
-  | factly | 0 / 72 | publishes no ClaimReview at all |
+  | newschecker | **138 / 177 (78%)** | Next.js streamed payload |
+  | altnews | **142 / 223 (64%)** | plain `ld+json` tag |
+  | factly | 0 / 400 (0%) | publishes no ClaimReview at all |
+
+  Net effect on the dataset: **52 usable items to 100.**
 
   Newschecker needed a second extraction route: it is a Next.js app-router site
   and injects its JSON-LD client-side from an escaped string inside
@@ -150,11 +170,33 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · **GATE** decision point
 
 ### 1.3 Deduplication — skip this and your results are invalid
 
-- [ ] **Add perceptual hashing** — *1 d* **[A]**
-  `imagehash` (pHash + dHash). Current SHA-256 only catches byte-identical files; it will miss re-compressed and re-cropped copies of the same creative.
-- [ ] **Cluster near-duplicates into claim groups** — *1 d*
-  The same viral creative is debunked independently by BOOM, Factly and Newschecker. Those are one item, not three.
-- [ ] **Report the duplicate rate** — goes in the paper.
+- [x] **Add perceptual hashing** — *1 d* **[A]** — pHash + dHash + colour hash.
+- [x] **Cluster near-duplicates into claim groups** — *1 d*
+- [x] **Report the duplicate rate** — **24.1%** on the first image-enriched
+  corpus (79 records into 60 clusters, largest cluster 13). Goes in the paper.
+
+  **Two bugs surfaced the moment real images existed, and both were fatal
+  rather than merely wrong.** Neither could be seen before, because with no
+  images downloaded there were no image comparisons to get wrong.
+
+  1. **Threshold units mismatch.** `04_curate.py` passed `--image-threshold`
+     as an int Hamming distance (default 8) into `cluster_records`, which
+     expects a **normalised** distance in [0,1]. `image_distance()` never
+     exceeds 1.0, so `<= 8` was always true: every pair was a duplicate and
+     **the entire corpus became one cluster** (a reported "98.7% duplicate
+     rate"). One cluster means one split receives every record and the other
+     two receive nothing — the splits are destroyed, silently.
+  2. **Boilerplate chained everything together.** Merging is single-linkage
+     over "any image in A matches any image in B", and chains are transitive,
+     so one masthead repeated across articles collapses unrelated claims into
+     a single cluster. `find_boilerplate()` now ignores any image appearing on
+     more than 15% of records (inert below 8 records, where a repeat is far
+     more likely to be a real duplicate).
+
+  The tell that something was wrong: `calibrate_dedup.py` reported **zero**
+  likely-duplicate claim pairs on the same corpus where clustering claimed
+  98.7% duplicates. **When those two disagree, believe the calibration.**
+  Both bugs are now covered by tests that reproduce the collapse.
 
 ### 1.4 Splits
 

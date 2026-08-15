@@ -258,6 +258,25 @@ def main() -> int:
           "measurement conditions present")
     check(cfg.text.fields[0] == "ocr_text",
           "OCR text is first, so truncation eats the caption not the claim")
+
+    # Both variants must be buildable as configured. This is checkable without
+    # torch and would otherwise surface as an opaque error deep inside
+    # MultiheadAttention, minutes into a run.
+    for variant in ("teacher", "student"):
+        arch = getattr(cfg, variant)
+        check(arch.hidden_dim % arch.fusion_heads == 0,
+              f"{variant}: hidden_dim {arch.hidden_dim} divides by "
+              f"fusion_heads {arch.fusion_heads}")
+
+    try:
+        from fipd.models.arms import build_arm
+
+        build_arm("no_such_arm", cfg.student)
+        check(False, "an unknown arm name is rejected")
+    except ValueError:
+        check(True, "an unknown arm name is rejected")
+    except ImportError:
+        print("  SKIP  torch not installed — arm construction not exercised")
     check("reference_machine" in str(cfg.measurement.reference_machine) or
           bool(cfg.measurement.reference_machine),
           "a reference machine is named — latency without one is not comparable")

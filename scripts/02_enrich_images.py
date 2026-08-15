@@ -24,6 +24,7 @@ import _bootstrap  # noqa: F401,E402
 from fipd.collection.article import ArticleScraper  # noqa: E402
 from fipd.schema.records import FactCheckRecord  # noqa: E402
 from fipd.curation.finance_filter import score_record  # noqa: E402
+from fipd.utils.logging_setup import setup as setup_logging  # noqa: E402
 
 log = logging.getLogger("enrich")
 
@@ -42,7 +43,9 @@ def main() -> int:
     ap.add_argument("--min-delay", type=float, default=2.0)
     args = ap.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(levelname)-7s %(message)s")
+    # Shared setup rather than basicConfig: it reconfigures stdout to UTF-8,
+    # without which the first Hindi headline logged kills the run on Windows.
+    setup_logging()
 
     data_dir = Path(args.data_dir)
     in_file = Path(args.in_file) if args.in_file else data_dir / "raw" / "googlefactcheck.jsonl"

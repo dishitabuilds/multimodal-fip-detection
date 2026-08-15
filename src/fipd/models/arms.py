@@ -129,6 +129,14 @@ def build_arm(arm: str, cfg: ArchConfig, from_scratch: bool = False):
     if arm not in ARMS:
         raise ValueError(f"unknown arm {arm!r}; expected one of {list(ARMS)}")
 
+    # Caught here rather than several layers down inside MultiheadAttention,
+    # where the error names neither the config key nor the file it came from.
+    if arm == "fused" and cfg.fusion == "cross_attention":
+        if cfg.hidden_dim % cfg.fusion_heads:
+            raise ValueError(
+                f"hidden_dim ({cfg.hidden_dim}) must divide by fusion_heads "
+                f"({cfg.fusion_heads}); fix them in configs/model.yaml")
+
     nn = _nn()
 
     text_enc = image_enc = fusion = None

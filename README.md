@@ -51,7 +51,7 @@ size/latency/accuracy tradeoff the report has to contain either way.
 python -m venv .venv
 .venv\Scripts\activate            # Windows
 pip install -e .                  # installs the fipd package
-python tests/run_all.py           # expect: 261 passed, 0 failed
+python tests/run_all.py           # expect: 271 passed, 0 failed
 ```
 
 Optional extras: `pip install -e ".[ocr]"`, `".[model]"`, `".[graph]"`, `".[serve]"`.
@@ -100,10 +100,14 @@ archives block their REST API but leave their sitemaps open.
 
 ## Where things stand
 
-- **Phase 1 pipeline: complete and tested.** 261 assertions, all offline.
-- **First real collection done** (2026-08-15): 1208 records from 5 archives.
-  After filtering and labelling, **52 usable items — a 4.3% end-to-end yield**,
-  every one of them `fake`. Numbers and caveats in `docs/CHECKLIST.md`.
+- **Phase 1 pipeline: complete and tested.** 271 assertions, all offline.
+- **First real collection done.** 1208 records from 5 archives → **100 usable
+  items (8.3% yield)** → **79 with images**, split 61/9/9 across 60 clusters
+  with a passing leakage check. Every one is labelled `fake`. Running the
+  pipeline on real data found three bugs that no mock could have: 81% of the
+  yield was being thrown away for want of a verdict that was published on the
+  page, and two dedup bugs were collapsing the whole corpus into one cluster.
+  All three are fixed and covered by tests; details in `docs/CHECKLIST.md`.
 - **Model code: scaffolding written, nothing trained.** Encoders, cross-attention
   fusion, the three ablation arms, metrics and the budget all exist; the parts
   that do not need torch are tested. No training has happened, because there is
@@ -114,8 +118,10 @@ Three open problems, in the order they block things:
 1. **Class balance.** Every record collected is `fake` — fact-checkers only
    publish debunks. No classifier can be trained until this is answered
    (Gate 2). It is the single blocking issue.
-2. **Yield.** The archives are overwhelmingly political. 4.3% end to end, and
+2. **Yield.** The archives are overwhelmingly political. 8.3% end to end, and
    the largest source (Factly) publishes no machine-readable verdict at all.
+   100 items against the ~500 Gate 1 wants: expect the archives to end up as a
+   seed and evaluation set, with Telegram collection pulled into Phase 1.
 3. **Nothing is verified against real tensors.** torch is not installed on the
    collection machine, so the arms build in principle only.
 

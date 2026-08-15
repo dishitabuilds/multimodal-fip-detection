@@ -228,6 +228,50 @@ def main() -> int:
     no_text, _ = cluster_records(records, data_dir=tmp, use_text=False)
     check(len(set(no_text.values())) == 2, "image signal alone is sufficient here")
 
+    # A threshold in the wrong units is the failure that actually happened:
+    # 04_curate.py passed a raw Hamming distance (8) where a normalised one
+    # is expected, and since image_distance() maxes out at 1.0, every pair
+    # matched and the whole corpus became a single cluster.
+    collapsed, _ = cluster_records(records, data_dir=tmp, image_threshold=8.0)
+    check(len(set(collapsed.values())) == 1,
+          "a threshold above 1.0 collapses everything — the bug this reproduces")
+    check(DEFAULT_IMAGE_THRESHOLD < 1.0,
+          "the real threshold is a normalised distance, not Hamming bits")
+
+    # =================================================================
+    print("\n[3b] Boilerplate images must not chain records together")
+    # Site furniture — a masthead repeated on every article. Merging is
+    # single-linkage, so one shared image chains two records, and chains are
+    # transitive: without this filter a whole corpus of unrelated claims
+    # collapses into one cluster. Observed for real on the first image run.
+    shutil.copy(img_dir / "b.jpg", img_dir / "masthead.jpg")
+    boiler = []
+    for i in range(12):
+        # Twelve unrelated claims, each carrying its own creative AND the
+        # same masthead.
+        src = "a.jpg" if i == 0 else "b.jpg"
+        shutil.copy(img_dir / src, img_dir / f"distinct_{i}.jpg")
+        boiler.append(rec(f"bp{i}", f"gfc:pub{i}.in", "fake",
+                          f"Completely unrelated claim number {i} about topic {i}",
+                          [f"images/distinct_{i}.jpg", "images/masthead.jpg"]))
+
+    with_filter, rep_on = cluster_records(boiler, data_dir=tmp, use_text=False)
+    without_filter, rep_off = cluster_records(boiler, data_dir=tmp, use_text=False,
+                                              drop_boilerplate=False)
+    check(len(set(without_filter.values())) == 1,
+          "without the filter, the shared masthead collapses all 12 into one")
+    check(len(set(with_filter.values())) > 1,
+          "with the filter, they stay separate",
+          f"got {len(set(with_filter.values()))} clusters")
+    check(rep_on.n_boilerplate_signatures >= 1, "the boilerplate signature is reported")
+    check(rep_off.n_boilerplate_signatures == 0, "and not counted when disabled")
+
+    # It must stay inert on a small corpus, where a repeated image is far more
+    # likely to be a genuine duplicate than a template.
+    _, small = cluster_records(records, data_dir=tmp)
+    check(small.n_boilerplate_signatures == 0,
+          "no boilerplate is claimed on a 4-record corpus")
+
     # =================================================================
     print("\n[4] Group-aware splitting")
     many = []

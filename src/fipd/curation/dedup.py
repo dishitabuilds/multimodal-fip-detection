@@ -56,7 +56,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, NamedTuple, Sequence
@@ -286,6 +286,8 @@ class DedupReport:
     duplicate_rate: float = 0.0
     merged_by_image: int = 0
     merged_by_text: int = 0
+    n_boilerplate_signatures: int = 0
+    n_boilerplate_images: int = 0
     cluster_sizes: dict[int, int] = field(default_factory=dict)
 
     def summary(self) -> str:
@@ -298,6 +300,8 @@ class DedupReport:
             f"images unreadable      {self.n_images_unreadable}",
             f"merges from image      {self.merged_by_image}",
             f"merges from claim text {self.merged_by_text}",
+            f"boilerplate images     {self.n_boilerplate_images} "
+            f"({self.n_boilerplate_signatures} distinct, ignored as site furniture)",
         ]
         if self.cluster_sizes:
             dist = ", ".join(f"{k}:{v}" for k, v in sorted(self.cluster_sizes.items()))
@@ -326,12 +330,51 @@ def hash_record_images(record, data_dir: str | Path) -> tuple[list[ImageSignatur
     return sigs, ok, bad
 
 
+def find_boilerplate(
+    per_record: dict[str, list[ImageSignature]],
+    max_share: float = 0.15,
+    min_records: int = 8,
+) -> set[ImageSignature]:
+    """Signatures that appear across too many records to be a viral creative.
+
+    Why this exists. Merging is single-linkage over "any image in A matches any
+    image in B", so ONE shared image chains two records together — and chains
+    are transitive. Site furniture (a masthead, a category banner, a standard
+    "FACT CHECK" strip) appears on dozens of unrelated articles, so a single
+    such image collapses the entire corpus into one cluster.
+
+    That is not hypothetical. On the first real image-enriched run, all 79
+    records merged into a single cluster (98.7% "duplicate rate") while the
+    text calibration simultaneously reported **zero** likely-duplicate claim
+    pairs. The images were boilerplate; the claims were all distinct.
+
+    A cluster that swallows everything is worse than no clustering: the splits
+    are built from clusters, so one cluster means one split gets every record
+    and the other two get nothing.
+
+    The rule: an image on more than `max_share` of records is furniture, not
+    evidence. `min_records` keeps it inert on small corpora, where "3 of 10
+    records" is a legitimate duplicate rather than a template.
+    """
+    if len(per_record) < min_records:
+        return set()
+
+    counts: Counter = Counter()
+    for sigs in per_record.values():
+        for sig in set(sigs):     # once per record, not once per occurrence
+            counts[sig] += 1
+
+    limit = max(2, int(len(per_record) * max_share))
+    return {sig for sig, n in counts.items() if n > limit}
+
+
 def cluster_records(
     records: Sequence,
     data_dir: str | Path = "data",
     image_threshold: float = DEFAULT_IMAGE_THRESHOLD,
     text_threshold: float = 0.6,
     use_text: bool = True,
+    drop_boilerplate: bool = True,
 ) -> tuple[dict[str, str], DedupReport]:
     """Group records that represent the same underlying item.
 
@@ -350,6 +393,19 @@ def cluster_records(
         per_record[rec.uid] = hs
         report.n_images_hashed += ok
         report.n_images_unreadable += bad
+
+    # --- drop site furniture before it chains everything together -----
+    if drop_boilerplate:
+        boilerplate = find_boilerplate(per_record)
+        if boilerplate:
+            report.n_boilerplate_signatures = len(boilerplate)
+            for uid, sigs in per_record.items():
+                kept = [s for s in sigs if s not in boilerplate]
+                report.n_boilerplate_images += len(sigs) - len(kept)
+                per_record[uid] = kept
+            log.info("ignoring %d boilerplate image signature(s) covering %d "
+                     "image(s) — site furniture, not creatives",
+                     report.n_boilerplate_signatures, report.n_boilerplate_images)
 
     # --- pairwise image comparison ------------------------------------
     for i in range(len(records)):

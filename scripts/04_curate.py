@@ -28,7 +28,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _bootstrap  # noqa: F401,E402
 
-from fipd.curation.dedup import cluster_records, pick_canonical  # noqa: E402
+from fipd.curation.dedup import (  # noqa: E402
+    DEFAULT_IMAGE_THRESHOLD,
+    cluster_records,
+    pick_canonical,
+)
 from fipd.curation.finance_filter import score_record  # noqa: E402
 from fipd.curation.labels import assign_label  # noqa: E402
 from fipd.schema.records import LABEL_UNKNOWN  # noqa: E402
@@ -44,8 +48,16 @@ def main() -> int:
     ap.add_argument("--threshold", type=float, default=4.0)
     ap.add_argument("--require-image", action="store_true")
     ap.add_argument("--no-dedup", action="store_true")
-    ap.add_argument("--image-threshold", type=int, default=8,
-                    help="max Hamming distance for 'same image' (0-64)")
+    # NORMALISED distance in [0,1], not raw Hamming bits. This used to be
+    # `type=int, default=8`, which silently made every pair a duplicate —
+    # image_distance() returns at most 1.0, so "<= 8" is always true, and the
+    # whole corpus collapsed into one cluster the moment images existed. One
+    # cluster means one split receives every record and the other two get
+    # nothing, so this was quietly fatal rather than merely wrong.
+    ap.add_argument("--image-threshold", type=float, default=DEFAULT_IMAGE_THRESHOLD,
+                    help=f"max normalised image distance for 'same creative', "
+                         f"0-1 (default {DEFAULT_IMAGE_THRESHOLD}; "
+                         f"calibrate with scripts/calibrate_dedup.py)")
     ap.add_argument("--text-threshold", type=float, default=0.6,
                     help="min Jaccard on claim shingles for 'same claim'")
     ap.add_argument("-v", "--verbose", action="store_true")
