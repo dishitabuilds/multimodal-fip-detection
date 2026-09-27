@@ -122,7 +122,7 @@ training:
   monitor: val_macro_f1
   class_weighting: balanced
   mixed_precision: true
-  num_workers: 2
+  num_workers: 0
 
 evaluation:
   # Accuracy is deliberately absent from the headline metrics. On imbalanced

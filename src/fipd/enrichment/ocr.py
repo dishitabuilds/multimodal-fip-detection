@@ -176,9 +176,19 @@ class EasyOCREngine(OCREngine):
 
     def load(self) -> None:
         import easyocr  # noqa: PLC0415
+        from pathlib import Path  # noqa: PLC0415
+
+        model_dir = self.options.get("model_storage_directory")
+        if not model_dir:
+            local_dir = Path("data/models/easyocr")
+            if local_dir.exists():
+                model_dir = str(local_dir.resolve())
 
         self._engine = easyocr.Reader(
-            self.languages, gpu=self.options.get("gpu", False), verbose=False
+            self.languages,
+            gpu=self.options.get("gpu", False),
+            model_storage_directory=model_dir,
+            verbose=False,
         )
 
     def _run(self, image_path: str) -> tuple[list[str], list[float]]:

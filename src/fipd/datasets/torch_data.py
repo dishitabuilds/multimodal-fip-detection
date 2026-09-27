@@ -28,6 +28,74 @@ IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 
 
+class ExampleDataset:
+    """A torch Dataset over examples, defined at module level for multiprocessing pickling."""
+
+    def __init__(
+        self,
+        examples: Sequence[Example],
+        tokenizer,
+        image_root: str | Path = "data",
+        image_size: int = 224,
+        max_tokens: int = 128,
+        needs_image: bool = True,
+        transform=None,
+    ) -> None:
+        self.examples = list(examples)
+        self.tokenizer = tokenizer
+        self.image_root = Path(image_root)
+        self.image_size = image_size
+        self.max_tokens = max_tokens
+        self.needs_image = needs_image
+        self.transform = transform
+        self.n_missing_images = 0
+
+    def __len__(self) -> int:
+        return len(self.examples)
+
+    def _image(self, ex: Example):
+        if not self.needs_image:
+            return None
+        path = self.image_root / ex.image_path if ex.image_path else None
+        if path is None or not path.exists():
+            self.n_missing_images += 1
+            torch = require_torch()
+            return torch.zeros(3, self.image_size, self.image_size)
+        try:
+            from PIL import Image
+            with Image.open(path) as im:
+                if self.transform is not None:
+                    return self.transform(im.convert("RGB"))
+                from torchvision import transforms
+                return transforms.ToTensor()(im.convert("RGB"))
+        except Exception as e:  # noqa: BLE001 - one bad file must not stop a run
+            log.warning("unreadable image %s (%s) — using a blank", path, e)
+            self.n_missing_images += 1
+            torch = require_torch()
+            return torch.zeros(3, self.image_size, self.image_size)
+
+    def __getitem__(self, idx: int) -> dict:
+        torch = require_torch()
+        ex = self.examples[idx]
+        enc = self.tokenizer(
+            ex.text,
+            truncation=True,
+            max_length=self.max_tokens,
+            padding="max_length",
+            return_tensors="pt",
+        )
+        item = {
+            "input_ids": enc["input_ids"].squeeze(0),
+            "attention_mask": enc["attention_mask"].squeeze(0),
+            "label": torch.tensor(ex.label, dtype=torch.long),
+            "uid": ex.uid,
+        }
+        img = self._image(ex)
+        if img is not None:
+            item["pixel_values"] = img
+        return item
+
+
 def build_dataset(
     examples: Sequence[Example],
     tokenizer_name: str,
@@ -43,13 +111,11 @@ def build_dataset(
     and colour jitter destroy exactly the evidence this project is looking for —
     a truncated y-axis, a pasted SEBI logo, the digits in a fake P&L screenshot.
     """
-    torch = require_torch()
+    require_torch()
     require_transformers()
-    from torch.utils.data import Dataset
     from transformers import AutoTokenizer
 
     try:
-        from PIL import Image
         from torchvision import transforms
     except ImportError as e:  # pragma: no cover - dependency shape, not logic
         raise ImportError(f'{e}. pip install -e ".[model]"') from e
@@ -72,50 +138,15 @@ def build_dataset(
             transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
         ])
 
-    class ExampleDataset(Dataset):
-        def __init__(self) -> None:
-            self.examples = list(examples)
-            self.n_missing_images = 0
-
-        def __len__(self) -> int:
-            return len(self.examples)
-
-        def _image(self, ex: Example):
-            if not needs_image:
-                return None
-            path = image_root / ex.image_path if ex.image_path else None
-            if path is None or not path.exists():
-                self.n_missing_images += 1
-                return torch.zeros(3, image_size, image_size)
-            try:
-                with Image.open(path) as im:
-                    return tf(im.convert("RGB"))
-            except Exception as e:  # noqa: BLE001 - one bad file must not stop a run
-                log.warning("unreadable image %s (%s) — using a blank", path, e)
-                self.n_missing_images += 1
-                return torch.zeros(3, image_size, image_size)
-
-        def __getitem__(self, idx: int) -> dict:
-            ex = self.examples[idx]
-            enc = tokenizer(
-                ex.text,
-                truncation=True,
-                max_length=max_tokens,
-                padding="max_length",
-                return_tensors="pt",
-            )
-            item = {
-                "input_ids": enc["input_ids"].squeeze(0),
-                "attention_mask": enc["attention_mask"].squeeze(0),
-                "label": torch.tensor(ex.label, dtype=torch.long),
-                "uid": ex.uid,
-            }
-            img = self._image(ex)
-            if img is not None:
-                item["pixel_values"] = img
-            return item
-
-    ds = ExampleDataset()
+    ds = ExampleDataset(
+        examples=examples,
+        tokenizer=tokenizer,
+        image_root=image_root,
+        image_size=image_size,
+        max_tokens=max_tokens,
+        needs_image=needs_image,
+        transform=tf,
+    )
     log.info("dataset: %d examples, tokenizer %s, images %s",
              len(ds), tokenizer_name, "on" if needs_image else "off")
     return ds
