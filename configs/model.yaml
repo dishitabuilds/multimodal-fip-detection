@@ -99,7 +99,7 @@ model:
 # truncation at the tokeniser's max length eats the caption, not the claim.
 # The whole premise of the project is that the claim is inside the image.
 text:
-  fields: [ocr_text, claim_text, title]
+  fields: [ocr_text, claim_text]
   separator: " [SEP] "
   max_chars: 2000
   lowercase: false            # MuRIL is cased; lowercasing throws away signal
