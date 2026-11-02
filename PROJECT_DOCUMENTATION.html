@@ -146,9 +146,9 @@
     </p>
     <div class="meta">
       <span class="chip ok">Collection pipeline implemented</span>
-      <span class="chip ok">Streamlit frontend added</span>
-      <span class="chip">Updated 1 October 2026</span>
-      <span class="chip warn">Trained checkpoint required</span>
+      <span class="chip ok">Hosted research demo available</span>
+      <span class="chip">Updated 2 November 2026</span>
+      <span class="chip warn">Validated research checkpoint pending</span>
     </div>
   </div>
 </header>
@@ -166,6 +166,7 @@
     <a href="#evidence">Current evidence</a>
     <a href="#problems">Open problems</a>
     <a href="#budget">Lightweight budget</a>
+    <a href="#execution">Execution guide</a>
     <a href="#roadmap">Roadmap</a>
     <a href="#log">Change log</a>
   </div>
@@ -200,6 +201,7 @@
     <tbody>
       <tr><td>Image</td><td>Visual patterns, forged logos, chart distortion</td><td>ViT-Small student / ViT-Base teacher</td><td>Model code implemented</td></tr>
       <tr><td>Text</td><td>Caption or archive claim text plus OCR, code-mixed Hindi/English</td><td>Multilingual DistilBERT student / MuRIL teacher</td><td>Model code implemented</td></tr>
+      <tr><td>Audio / video</td><td>Timestamped speech and sampled-frame OCR</td><td>Whisper base CPU INT8 / EasyOCR</td><td>Extraction implemented; detection accuracy unvalidated</td></tr>
       <tr><td>Propagation</td><td>How a post travels between Telegram channels</td><td>GNN (PyTorch Geometric), proposed</td><td>Future work</td></tr>
     </tbody>
   </table>
@@ -386,6 +388,8 @@
       <tr><td><code>.[frontend]</code></td><td>Streamlit image/text demo with EasyOCR and model inference dependencies.</td></tr>
       <tr><td><code>.[ocr]</code></td><td>All three OCR Python backends plus optional transliteration library; Tesseract also needs its external binary and language data.</td></tr>
       <tr><td><code>.[model]</code></td><td>Training, evaluation and model measurement dependencies.</td></tr>
+      <tr><td><code>.[lab]</code></td><td>TF-IDF / MobileNet features with SVM, Logistic Regression and Naive Bayes.</td></tr>
+      <tr><td><code>.[media]</code></td><td>Local speech transcription and PyAV audio/video decoding; install requirements-media.txt alongside the frontend.</td></tr>
       <tr><td><code>.[graph]</code></td><td>Dependencies for the planned Telegram/graph phase.</td></tr>
       <tr><td><code>.[serve]</code></td><td>Streamlit plus FastAPI/ONNX serving and export dependencies; does not install the full inference stack.</td></tr>
       <tr><td><code>.[dev]</code></td><td>Development tooling.</td></tr>
@@ -401,60 +405,29 @@
 
 <!-- ============================================================ -->
 <section id="frontend">
-  <h2><span class="num">04</span>Streamlit frontend</h2>
-  <p class="lede">An image-and-text research demo in <code>app.py</code>.</p>
-
-  <p>
-    The interface accepts JPG, PNG and WebP creatives, an optional caption,
-    and six preset selections: three scam examples and three AMFI investor
-    education examples. The repository contains 11 files in
-    <code>test_samples/</code>; these are demo assets, and there is no committed
-    provenance manifest proving that they belong to a held-out test split.
-  </p>
-  <div class="callout">
-    <span class="tag">Preview versus model analysis</span>
-    <p>
-      Without <code>data/checkpoints/fused_seed42.pt</code>, the interface
-      remains available for upload and sample previews, reports the missing
-      checkpoint and disables analysis. It does not download model weights
-      merely to display the page. Place a trained student fused checkpoint
-      at that path to enable analysis.
-    </p>
-  </div>
-  <p>
-    The checkpoint must match <code>configs/model.yaml</code> and contain
-    <code>state_dict</code>; the training loop also stores its
-    validation-selected <code>threshold</code>. Components initialise on the
-    first analysis. Encoder weights come from that checkpoint; uncached
-    Hugging Face encoder configuration files/tokenizer and EasyOCR weights
-    may need an initial network download. Frontend OCR weights are stored in
-    <code>data/models/easyocr/</code>.
-  </p>
-
-  <h3>What an analysis displays</h3>
+<h2><span class="num">04</span>Promotion Lens frontend and hosting</h2>
+  <p class="lede">Research workbench deployed at <a href="https://promotion-lens-demo.streamlit.app/">promotion-lens-demo.streamlit.app</a>. Hosting does not validate the detector.</p>
+  <h3>Image analysis</h3>
+  <p><code>app.py</code> accepts JPG, PNG and WebP images up to 10 MB and 12 million pixels, plus an optional original caption. Four selectable examples use the 11 tracked demonstration images; they are not a held-out benchmark. The hosting upload widget allows 50 MB for media, while image analysis separately enforces its smaller limit.</p>
   <ul>
-    <li>A model prediction and the two class scores, with processing time.</li>
-    <li>Regex-based keyword indicators for return promises, payout wording, referrals, authority mentions and investor-protection notices. These checks are separate from the neural model.</li>
-    <li>Extracted OCR text and diagnostics drawn from the configured architecture.</li>
+    <li><strong>Extract text:</strong> default English/Hindi OCR and descriptive wording cues; no classifier checkpoint is required.</li>
+    <li><strong>Pilot demo:</strong> explicit local opt-in to a tiny randomly initialized engineering model trained on 14 provisionally AI-labelled images. Outputs are unvalidated.</li>
+    <li><strong>Research model:</strong> requires a compatible student/fused checkpoint at <code>data/checkpoints/fused_seed42.pt</code>, a validation-selected threshold, architecture/text/input-pipeline provenance, and matching local tokenizer/encoder assets. Legacy metadata-free and pilot checkpoints are rejected.</li>
   </ul>
-  <p>
-    The frontend uses the dataset's text-assembly helper, including configured
-    normalization/transliteration. OCR text precedes the caption with a
-    separator; the tokenizer pads/truncates
-    to 128 tokens, and images are resized to 224&times;224 with ImageNet
-    normalization. The current student uses multilingual DistilBERT,
-    ViT-Small, 384-dimensional fusion, six attention heads, one fusion layer
-    and dropout 0.1. Processing time includes OCR, preprocessing and inference,
-    plus initialization on the first run, so it is not comparable to the
-    model-only latency budget.
-  </p>
-  <p>
-    Predictions do not establish legal authorization or regulator approval.
-    No tracked checkpoint or reproducible held-out score accompanies the
-    collaborator's frontend commit. The earlier hardcoded
-    <code>macro-F1 = 1.000</code> and four-head architecture claims have
-    therefore been removed from the current frontend.
-  </p>
+  <p>Resources initialize on analysis, not preview. Results persist until inputs or settings change. EXIF orientation and alpha compositing are consistent between preview and analysis. JSON exports retain evidence and timing. Class scores are not calibrated authenticity guarantees, regulator approval or investment advice.</p>
+  <h3>Additional pages</h3>
+  <ul>
+    <li><strong>ML Lab:</strong> TF-IDF text features, frozen MobileNetV3 image features and classical model comparisons. Seven local pilot artifacts demonstrate engineering only; reviewed research artifacts are still missing. See <a href="docs/ML_LAB.md">ML Lab</a>.</li>
+    <li><strong>Promotion Audit:</strong> independent English wording rules, claim-level reviewer sources and dated evidence. A multi-label framing training path exists, but no validated framing model is supplied. See <a href="docs/PROMOTION_AUDIT.md">Promotion Audit</a> and <a href="docs/FRAMING_LABELS.md">framing annotations</a>.</li>
+    <li><strong>Audio Video:</strong> up to 50 MB / 120 seconds; local CPU INT8 Whisper speech, timestamped segments, sampled-frame OCR and JSON evidence. Optional lab classifiers apply to segments or frames; no validated aggregate file-level fraud verdict or learned temporal fusion is implemented. See <a href="docs/MEDIA.md">media setup and limits</a>.</li>
+  </ul>
+  <h3>Deployment contract</h3>
+  <p>Streamlit Community Cloud uses branch <code>codex/streamlit-demo</code>, entrypoint <code>deployment/streamlit_app.py</code> and Python 3.12. Its adjacent requirements file supplies official CPU-only PyTorch wheel URLs and pins PyArrow 24.0.0 to match the cloud compatibility guard. Ordinary dependencies resolve from PyPI rather than the PyTorch index.</p>
+  <p>The separate cloud entrypoint prepares public OCR weights and prepares speech weights for the media page. Preparation uses a separate process; inference consumes local files. Running <code>app.py</code> locally retains offline-only inference and requires prepared assets. Public OCR weights occupy about 285 MiB and speech about 141 MiB; these are separate from classifier size targets.</p>
+  <div class="callout"><span class="tag">Deployed scope and verification</span>
+    <p>On 2 November 2026, live OCR extracted 25 lines from a bundled sample and a hypothetical wording audit identified a return promise and an urgency cue. The audio/video page loaded and server logs confirmed speech-weight preparation, but its cloud upload/transcription check was not completed because browser file transfer was blocked and computer control subsequently stopped. These checks do not measure detection or transcription accuracy.</p>
+    <p>Local ignored pilot checkpoints, seven lab classifiers and matching feature assets are not packaged in the hosted demo. Research inference remains unavailable. See <a href="docs/DEPLOYMENT.md">deployment settings and release instructions</a>.</p>
+  </div>
 </section>
 
 <!-- ============================================================ -->
@@ -658,6 +631,10 @@
       <tr><td><code>models/config.py</code> / <code>encoders.py</code> / <code>arms.py</code></td><td>Architecture/config validation, Hugging Face text/image encoders and the three arms. Fused attention runs text-to-image and image-to-text; concat fusion is also implemented.</td></tr>
       <tr><td><code>training/metrics.py</code> / <code>loop.py</code></td><td>Precision/recall/F1, macro-F1, PR/ROC-AUC, threshold selection, seeded training, class weighting, early stopping, validation-selected checkpoints and per-run reports.</td></tr>
       <tr><td><code>models/budget.py</code></td><td>Budget targets, measurements, pass/fail reporting and timing helpers. Missing measurements stay explicit.</td></tr>
+      <tr><td><code>frontend/</code>, <code>pages/</code>, <code>deployment/</code></td><td>Lazy local inference, four workbench pages, explicit cloud provisioning and deployment dependencies.</td></tr>
+      <tr><td><code>models/classical.py</code>, <code>training/lab.py</code>, <code>training/framing.py</code></td><td>Classical baselines, trusted artifact checks and reviewed multi-label framing experiments.</td></tr>
+      <tr><td><code>analysis/</code>, <code>enrichment/media.py</code></td><td>Wording/evidence analysis, bounded media decoding, local speech and sampled-frame OCR.</td></tr>
+      <tr><td><code>datasets/audit.py</code>, <code>reviews.py</code>, <code>experiments.py</code></td><td>Selected-input audit, attributed review import, cohort/split validation and experiment fingerprints.</td></tr>
       <tr><td><code>utils/</code></td><td>Shared HTTP caching/retries/rate limiting and robots handling, record IO and logging. The standalone AMFI collector currently bypasses the shared HTTP client.</td></tr>
     </tbody>
   </table>
@@ -708,167 +685,84 @@ python scripts/07_ablation.py                 # train/evaluate configured arms</
     The API collector needs <code>FACTCHECK_API_KEY</code> for its Google route.
     The AMFI script writes <code>data/raw/amfi.jsonl</code> and
     <code>data/images/amfi/</code>, filters filename patterns and small images,
-    resumes by UID and labels candidates <code>real</code>. Despite its
-    docstring mentioning SEBI, the implemented collector only visits AMFI.
+    resumes by UID and leaves candidates <code>unknown</code> pending review.
+    The implemented collector only visits AMFI; SEBI/RBI/broker collection is future work.
   </p>
   <p>
     Stage 01 uses configured request delays, caching and <code>robots.txt</code>.
     Stage 01b uses a separate requests session and a 0.3-second sleep after
     successful image downloads, without shared robots/rate-limit checks.
-    Its automatically assigned provenance-based labels require manual review.
+    Source branding is provenance, not a verified legitimate-class label; candidates require manual review.
   </p>
 
   <h3>Training artifacts</h3>
   <pre><code>python -m pip install -e ".[model]"
 python scripts/07_ablation.py --arms fused --seeds 42 --epochs 1
-python scripts/07_ablation.py --image-only-claims</code></pre>
+python scripts/07_ablation.py --image-only-claims --reviewed-subset data/reviewed_gate4.json</code></pre>
   <p>
-    The one-epoch command is a debugging run. Training needs both classes and
+    The one-epoch command is a debugging run. A reviewed subset JSON must declare <code>reviewed: true</code>, held-out UIDs and both classes. Use <code>--evaluate-only --experiment-id ID</code> with the original effective inputs/configuration to reload saved experiments. Training needs both classes and
     non-empty train/validation splits from
     <code>data/interim/finance.jsonl</code> and
     <code>data/processed/split_manifest.json</code>. Outputs include
-    <code>data/checkpoints/&lt;arm&gt;_seed&lt;seed&gt;.pt</code> and per-run
+    <code>data/checkpoints/&lt;variant&gt;/&lt;experiment-id&gt;/&lt;arm&gt;_seed&lt;seed&gt;.pt</code> and per-run
     history, manifest hash and aggregate reports in
-    <code>data/processed/ablation/</code>. Regenerate reviewed data and splits
+    <code>data/processed/ablation/&lt;variant&gt;/&lt;experiment-id&gt;/</code>. Regenerate reviewed data and splits
     before attempting a meaningful run.
   </p>
 </section>
 
 <!-- ============================================================ -->
 <section id="testing">
-  <h2><span class="num">08</span>Testing</h2>
-  <p class="lede">Four pipeline suites and offline Streamlit regressions; model performance must be evaluated separately.</p>
-  <pre><code>.\.venv\Scripts\python.exe tests/run_all.py
-.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
-.\.venv\Scripts\python.exe -m pytest tests/test_frontend.py -q</code></pre>
-  <table>
-    <thead><tr><th>Suite</th><th>Coverage</th></tr></thead>
-    <tbody>
-      <tr><td><code>unit/test_collection.py</code></td><td>Source adapters, article/JSON-LD parsing, image discovery, finance filtering, labelling and persistence.</td></tr>
-      <tr><td><code>unit/test_curation.py</code></td><td>Perceptual hashes, clustering, split leakage checks, OCR result interfaces and transliteration.</td></tr>
-      <tr><td><code>unit/test_models.py</code></td><td>Architecture/config validation, budgets, metrics, threshold selection and example assembly without heavyweight model downloads.</td></tr>
-      <tr><td><code>integration/test_stages.py</code></td><td>Collection, enrichment, curation and split CLIs against the local mock server.</td></tr>
-      <tr><td><code>test_frontend.py</code></td><td>Streamlit AppTest: missing checkpoints, sample switching from another working directory, lazy initialization failure, and OCR failure with temporary-file cleanup. Model downloads are mocked.</td></tr>
-    </tbody>
-  </table>
-  <p>Verified on 1 October 2026: <strong>265 pipeline assertions and four frontend tests passed</strong>. Six optional scikit-learn metric cross-checks were skipped in the frontend environment. Package compatibility checks and imports of Streamlit, torch, torchvision, Transformers and EasyOCR also passed.</p>
-  <p>
-    <code>tests/fixtures/mock_server.py</code> serves WordPress pagination,
-    sitemaps, structured article data and valid image bytes locally. Synthetic
-    image tests apply real compression, resize, crop and brightness operations
-    to exercise perceptual hashing. Adversarial fixtures include lazy images,
-    misleading finance terms, annotations and deliberately injected leakage.
-  </p>
-  <p>
-    Passing these suites validates repository logic against fixtures. It does
-    not establish OCR accuracy, current live-source accessibility, trained
-    model quality, or a lightweight deployment. The previous 172-assertion
-    documentation snapshot predates the model-utility suite and collection
-    fixes; use the current runner output when reporting verification.
-  </p>
+<h2><span class="num">08</span>Testing and verification</h2>
+  <p class="lede">Software behavior, live integration and statistical model quality are separate evidence.</p>
+  <pre><code>.\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider
+.\.venv\Scripts\python.exe tests/run_all.py</code></pre>
+  <p>Recorded on 2 November 2026 in the project virtual environment: <strong>313 tests and 11 subtests passed</strong>. After incorporating the newer GitHub configuration commit, affected frontend-analysis, experiment, text-assembly and architecture checks passed <strong>61 tests and 3 subtests</strong>. Existing <code>datetime.utcnow()</code> deprecation warnings remain; they were not test failures.</p>
+  <ul>
+    <li>Collection, article-image selection, review preservation/import, dataset audit, common cohorts, duplicate/split validation and experiment provenance.</li>
+    <li>Real tiny-tensor training, checkpoint save/reload, threshold compatibility, architecture budgets and FP32 reporting.</li>
+    <li>Streamlit input/result state, OCR-only operation, explicit pilot limitations, missing research assets, cloud provisioning and failure recovery.</li>
+    <li>Classical models, framing annotations/evidence, and real audio/video codec round trips with deterministic recognizer/OCR doubles.</li>
+  </ul>
+  <p>Local media engineering checks include real speech transcription and sampled-frame OCR, documented in <a href="docs/MEDIA.md">MEDIA.md</a>. Hosted checks and the incomplete cloud audio upload test are recorded in the frontend section. Linux/Python 3.12 dependency resolution also succeeded for 77 packages after the package-index correction.</p>
+  <p>These outcomes establish neither classifier generalization, multilingual OCR/speech accuracy, live-source availability nor an achieved compressed-model budget. The October assertion counts in older records are historical snapshots.</p>
 </section>
 
 <!-- ============================================================ -->
 <section id="evidence">
-  <h2><span class="num">09</span>Current evidence</h2>
-  <p class="lede">Local artifacts inspected on 1 October 2026; a fresh clone contains only data directory placeholders.</p>
-  <table>
-    <thead><tr><th>Artifact</th><th>Observed content</th></tr></thead>
-    <tbody>
-      <tr><td><code>data/interim/curation_report.json</code></td><td>100 input records; 79 finance-labelled records, all <code>fake</code>; 60 clusters. Four sources appear in this report; it is not a balanced training set.</td></tr>
-      <tr><td><code>data/processed/split_manifest.json</code></td><td>61 train / 9 validation / 9 test records; 60 clusters; seed 42; assignment hash <code>71ca28d778777ff1</code>.</td></tr>
-      <tr><td><code>test_samples/</code></td><td>11 tracked image files, with six configured frontend presets. No committed held-out membership/provenance manifest.</td></tr>
-      <tr><td>Checkpoints and evaluation reports</td><td>No trained model checkpoint or reproducible per-run performance report is tracked with the collaborator's changes.</td></tr>
-    </tbody>
-  </table>
-  <p>
-    An earlier README described an initial archive harvest of 1,208 records
-    yielding 100 usable candidates and 79 with images. The current local
-    curation report operates on a 100-record input and retains 79; these are
-    different pipeline snapshots, not a newly measured 1,208-record run.
-    Collected data, processed reports and checkpoints are gitignored, so this
-    local state does not transfer through <code>git pull</code>.
-  </p>
-  <div class="callout danger">
-    <span class="tag">Training status</span>
-    <p>
-      Commit <code>ac3d7b3</code> says “train on real data”, but its tracked
-      changes provide frontend/collector/runtime code and sample images.
-      The checkpoint, evaluation dataset manifest and per-run metrics are
-      needed to verify that claim and any reported F1. The current local
-      report still contains a single class and cannot support binary training.
-    </p>
+<h2><span class="num">09</span>Current evidence</h2>
+  <p class="lede">Latest documented inventory and deployment checks: 2 November 2026. Collected data, trained weights and reports remain local ignored outputs.</p>
+  <ul>
+    <li><strong>Selected review inventory:</strong> 1,246 unique candidate UIDs. The local <code>data/processed/accuracy-review-20261102/dataset_audit.json</code> and manual-review exports report unresolved labels, missing usable creatives/OCR and duplicate-image groups. This is not an approved training corpus.</li>
+    <li><strong>Historical curated snapshot:</strong> 100 inputs produced 79 finance-labelled records (79 fake / 0 real), in 60 clusters. Its 61/9/9 split has assignment hash <code>71ca28d778777ff1</code>. An unrelated repeated image was subsequently found across splits, so the old cluster-only leakage check is insufficient.</li>
+    <li><strong>Legitimate candidates:</strong> 38 local AMFI images await human review; provenance alone does not approve their class or relevance.</li>
+    <li><strong>Internal pilot:</strong> 14 provisionally AI-labelled images, split 7/4/3. Tiny neural checkpoints and seven classical lab artifacts exist locally. See <a href="docs/PILOT_RUN.md">pilot record</a>; no research accuracy claim follows from them.</li>
+    <li><strong>Hosted workbench:</strong> image OCR and wording/evidence inspection are available. No validated research checkpoint is supplied or deployed.</li>
+  </ul>
+  <div class="callout danger"><span class="tag">Interpreting reported pilot scores</span>
+    <p>The supplied execution guide reports very high pilot accuracy and attributes it to source/title shortcuts and tiny test sets. Those statements are motivation for an audit, not independently verified measurements in this update. Neither existing plot images nor a commit message establishes an evaluated research result without the matching dataset, split, checkpoint and per-run metrics.</p>
   </div>
+  <p>See <a href="DATASET.md">DATASET.md</a> for record populations and review rules. A fresh clone obtains code and demonstration images, not the ignored local corpus or checkpoints.</p>
 </section>
 
 <!-- ============================================================ -->
 <section id="problems">
-  <h2><span class="num">10</span>Open problems</h2>
-  <p class="lede">Work required before a reliable multimodal result can be reported.</p>
-
-  <div class="callout danger">
-    <span class="tag">Class balance and source shortcuts</span>
-    <p>
-      The local curated corpus has 79 <code>fake</code> records and no
-      <code>real</code> examples. AMFI collection is implemented, but its output
-      is absent from the inspected reports. Collect and review legitimate
-      creatives, rerun OCR/curation/splitting, and verify both classes occur in
-      usable training and evaluation examples.
-    </p>
-    <p>
-      AMFI branding and investor-education layouts differ from debunk archive
-      screenshots. A classifier may learn source or image style instead of
-      deceptive content. Add reviewed legitimate promotions and hard negatives
-      in comparable visual genres, and audit source distribution and duplicates.
-    </p>
-  </div>
-
-  <div class="callout">
-    <span class="tag">Text and image label leakage</span>
-    <p>
-      Configured training text includes OCR, archive claim text and article
-      title. Fact-check titles can explicitly name a scam; AMFI-generated
-      text explicitly describes official material. These fields can expose
-      labels and differ from the optional caption entered in the app.
-      Review/redact verdict wording and fact-check stamps, and define an
-      inference-compatible text input before interpreting model scores.
-    </p>
-  </div>
-
-  <h3>Fair ablation and the image-only-claim subset</h3>
-  <p>
-    <code>scripts/07_ablation.py</code> currently filters image availability
-    for image/fused arms while the text arm can retain additional records.
-    Compare arms on a common held-out population for a defensible delta.
-    The <code>image_only_claim</code> flag uses archive claim text as a caption
-    proxy; manually review the subset because original social captions are
-    generally unavailable. The text-only arm still includes OCR; a
-    caption-only baseline is needed to isolate the benefit of in-image text.
-  </p>
-
-  <h3>Yield and generalization</h3>
-  <p>
-    The inspected 79-record corpus and nine-record test split are too small to
-    support strong generalization claims. More reviewed, diverse data is
-    needed. Public-channel Telegram collection remains proposed; choose any
-    expanded source strategy with the supervisor and preserve provenance,
-    image hygiene and group-aware splits.
-  </p>
-
-  <h3>Missing artifacts and runtime validation</h3>
-  <p>
-    Obtain the collaborator's checkpoint with its matching configuration,
-    split manifest and evaluation reports, or run reproducible training after
-    data review. Verify tensor paths, OCR, threshold behavior and sample
-    predictions with those artifacts. Merely starting Streamlit cannot
-    establish model performance.
-  </p>
+<h2><span class="num">10</span>Open problems</h2>
+  <p class="lede">The main research blocker is a reviewed, diverse two-class corpus and credible held-out evaluation.</p>
+  <h3>Data quality and source shortcuts</h3>
+  <p>Review task relevance, original creatives/captions, class labels and OCR. Exclude fact-check verdict stamps and editorial screenshots from model inputs. Balance sources and creative styles across classes; add legitimate promotions, warnings/education as clearly distinguished hard negatives, and diverse scam campaigns. AMFI-only negatives can expose branding shortcuts. Official branding or broker registration alone does not verify every claim.</p>
+  <h3>Text sanitation</h3>
+  <p><code>configs/model.yaml</code> already uses <code>fields: [ocr_text, claim_text]</code>; the editorial <code>title</code> field was removed in commit <code>eb5d407</code>. Original-caption provenance still needs review: archive claim text can contain verdict leakage or differ from a social caption. Other experimental configurations must be audited separately. Preserve annotation text for provenance outside the inference inputs.</p>
+  <h3>Fair comparison and Gate 4</h3>
+  <p>The runner now verifies a common multimodal cohort, seeds before model construction and isolates experiment outputs. Gate 4 requires manually reviewed held-out UIDs and uses the same full-test predictions without retraining. The text-only arm already includes OCR: a caption-only baseline and source/campaign-isolated evaluation are still needed. One fused win on a small subset is evidence to investigate, not proof of generalization.</p>
+  <h3>Production artifacts and evaluation</h3>
+  <p>Freeze reviewed group-aware splits with both classes, verify exact/near-duplicate and campaign isolation, then train and retain multi-seed artifacts. Evaluate misclassifications and confidence intervals before drawing performance conclusions. A validated compressed checkpoint, measured end-to-end memory/latency, calibrated scores and media-specific evaluation remain outstanding.</p>
 </section>
 
 <!-- ============================================================ -->
 <section id="budget">
   <h2><span class="num">11</span>Lightweight budget</h2>
-  <p class="lede">Targets in <code>configs/model.yaml</code>; no achieved deployment measurements are tracked.</p>
+  <p class="lede">Targets in <code>configs/model.yaml</code>; only limited internal smoke measurements exist.</p>
   <table>
     <thead><tr><th>Metric</th><th>Target for compressed student</th></tr></thead>
     <tbody>
@@ -883,8 +777,9 @@ python scripts/07_ablation.py --image-only-claims</code></pre>
     The RAM figure is a project budget, not a guaranteed Streamlit hosting
     allowance. The configured student is not a distilled or INT8-exported
     artifact and may require further compression to reach these ceilings.
-    Hosting feasibility needs separate verification for the chosen service.
+    The hosted workbench is operational, but research-model resource compliance has not been demonstrated.
   </p>
+  <p>The original configured fused student has 159,654,530 parameters, above the 50M ceiling. The optional IndicBERT/DeiT-Tiny candidate has 39,858,114 parameters but remains unvalidated and requires additional compression to meet the disk target. The tiny pilot's 4.111 MiB checkpoint and 32.55/36.86 ms p50/p95 measurement used only ten timed FP32 runs, excluded OCR, and left peak RAM and teacher retention unmeasured; it is not a research deployment benchmark.</p>
   <pre><code>python scripts/06_budget.py --targets-only
 python scripts/06_budget.py --arm fused --variant student --from-scratch</code></pre>
   <p>
@@ -905,8 +800,34 @@ python scripts/06_budget.py --arm fused --variant student --from-scratch</code><
 </section>
 
 <!-- ============================================================ -->
+
+<section id="execution">
+  <h2><span class="num">12</span>Execution guide: corrected research plan</h2>
+  <p class="lede">Reconciled with the user-supplied <code>complete_project_execution_guide.md</code>. Its collection, training, export and publication actions are proposed work; reading the guide did not execute or authorize them.</p>
+  <h3>Phase 1 / M1 — Reviewed corpus and frozen splits</h3>
+  <p>Use the guide's 150–200 unique fake and roughly 150 legitimate examples as collection goals, not current counts. Diversify sources, genres and languages, review labels/captions/OCR, preserve reviewer attribution, and check duplicates before splitting. Aim for a balanced 30–50-item independent test set as an initial planning target; sample size alone does not guarantee reliable estimates. The guide's days 1–3 are effort estimates, not a committed schedule.</p>
+  <pre><code>python scripts/01_collect.py --source altnews --limit 25
+python scripts/01_collect.py --source vishvasnews --limit 25
+python scripts/01_collect.py --source factly --limit 25
+python scripts/02_enrich_images.py --finance-only</code></pre>
+  <p>The actual flag is repeatable <code>--source</code>, not <code>--sources</code>. Check source permissions, configured fallbacks and yield before scaling. Stage 02 enriches Google API discovery records, not every archive automatically. SEBI/RBI/broker collectors are not implemented. Follow the input preparation, OCR, review import, calibration and split sequence in <a href="DATASET.md">DATASET.md</a>; do not train on the unresolved inventory.</p>
+  <h3>Phase 2 / M2–M3 — Sanitized multi-seed ablations</h3>
+  <p>After M1, compare text-only (OCR plus caption), image-only and cross-attention fusion on the same frozen cohort with seeds 13, 42 and 1337. The guide chooses six epochs; the repository default is eight, so record any explicit override. Use validation-selected thresholds, report per-seed and mean/standard-deviation macro-F1, precision, recall and PR/ROC-AUC, and retain confusion matrices and paired uncertainty estimates. Review available false positives/negatives rather than inventing 10–15 errors when the test set has fewer.</p>
+  <pre><code>python scripts/07_ablation.py --seeds 13 42 1337 --epochs 6 --batch-size 16
+python scripts/07_ablation.py --evaluate-only --experiment-id REPLACE_WITH_SAVED_ID --seeds 13 42 1337 --epochs 6 --batch-size 16 --image-only-claims --reviewed-subset data/reviewed_gate4.json</code></pre>
+  <p>Commands require reviewed inputs at the documented defaults or explicit <code>--records</code>/<code>--manifest</code> paths. The second command must reuse the first run's effective settings and saved ID. The reviewed JSON declares a name, <code>reviewed: true</code> and held-out UIDs from both classes. Reports live under <code>data/processed/ablation/&lt;variant&gt;/&lt;experiment-id&gt;/</code>, not the guide's legacy flat <code>ablation.json</code>/<code>ablation.txt</code> paths. Add a caption-only baseline to test the specific image-carried-claim premise.</p>
+  <h3>Phase 3 / M4 — Measured lightweight artifact</h3>
+  <p>Measure the actual selected checkpoint, not an untrained architecture or a student benchmark labelled as a teacher result. State hardware, precision, warm-up/timed-run count, preprocessing scope, serialized size and peak RAM. ONNX export, INT8 compression and distillation remain future work; an INT8 setting is not quantization, and parameter count is unchanged by quantization. Re-evaluate held-out quality and teacher retention after compression.</p>
+  <pre><code>python scripts/06_budget.py --targets-only
+python scripts/06_budget.py --arm fused --variant student --checkpoint data/checkpoints/student/REPLACE_WITH_SAVED_ID/fused_seed42.pt</code></pre>
+  <p>The guide's under-150-ms UI example is a proposed aspiration, not a measured end-to-end result. The actual configured model-only targets are p50/p95 100/250 ms, 50M parameters, 100 MB serialized size and 1,024 MB peak RAM, with at least 95% teacher macro-F1 retention.</p>
+  <h3>Phase 4 / M5 — Evidence-backed demo, report and presentation</h3>
+  <p>The hosted workbench completes the interface/hosting portion of M5; validated classifier inference is still pending. Record a short workflow demo with current limitations visible. Present ablation figures only when regenerated from the matching reviewed run; the existing plotting script reads a legacy flat report. Report methods, dataset provenance, split hashes, baselines, errors, resource conditions and limitations. Do not present unvalidated class scores as “Genuine / Low Risk” or “Fake / High Risk,” a suitability decision, regulator approval or a forecast.</p>
+  <p><strong>Current milestone status:</strong> M1 pending human review; M2 sanitation safeguard implemented but research training pending; M3 common-cohort/subset machinery implemented but research comparison pending; M4 research compression/budget pending; M5 workbench deployed, validated detector pending. The guide's days 4–10 are planning estimates contingent on these gates.</p>
+</section>
+
 <section id="roadmap">
-  <h2><span class="num">12</span>Roadmap</h2>
+  <h2><span class="num">13</span>Roadmap</h2>
   <p class="lede">Implementation status separated from trained or evaluated results.</p>
   <table>
     <thead><tr><th>Work</th><th>Status</th><th>Next evidence needed</th></tr></thead>
@@ -914,8 +835,8 @@ python scripts/06_budget.py --arm fused --variant student --from-scratch</code><
       <tr><td>Archive collection, curation and deduplication</td><td><span class="status-dot done"></span>Implemented; local collection exists</td><td>Expanded reviewed corpus and current source yield.</td></tr>
       <tr><td>Group-aware splits and OCR</td><td><span class="status-dot done"></span>Implemented</td><td>Manual annotation audit, OCR-quality checks and regenerated balanced manifest.</td></tr>
       <tr><td>Legitimate class collection</td><td><span class="status-dot now"></span>AMFI collector added</td><td>Reviewed real-class examples integrated into data and splits.</td></tr>
-      <tr><td>Model arms, fusion and training</td><td><span class="status-dot now"></span>Code implemented; training unverified</td><td>Matching checkpoints, multiple-seed reports, common test population and reviewed image-only-claim subset.</td></tr>
-      <tr><td>Streamlit frontend</td><td><span class="status-dot done"></span>Implemented; preview runs without checkpoint</td><td>Trained checkpoint for OCR/model analysis and prediction validation.</td></tr>
+      <tr><td>Model arms, fusion and training</td><td><span class="status-dot now"></span>Code and internal pilot verified; research evaluation pending</td><td>Matching checkpoints, multiple-seed reports, common test population and reviewed image-only-claim subset.</td></tr>
+      <tr><td>Streamlit frontend</td><td><span class="status-dot done"></span>Hosted OCR/audit workbench available</td><td>Validated classifier checkpoint and completed cloud media upload/transcription check.</td></tr>
       <tr><td>External dataset benchmarking</td><td><span class="status-dot todo"></span>Planned</td><td>Documented dataset and evaluation protocol.</td></tr>
       <tr><td>Telegram graph / GNN</td><td><span class="status-dot todo"></span>Planned</td><td>Collection/provenance design and propagation branch implementation.</td></tr>
       <tr><td>Distillation, INT8/ONNX and API serving</td><td><span class="status-dot todo"></span>Planned</td><td>Exported artifact, measured budget and accuracy retention.</td></tr>
@@ -932,8 +853,21 @@ python scripts/06_budget.py --arm fused --variant student --from-scratch</code><
 
 <!-- ============================================================ -->
 <section id="log">
-  <h2><span class="num">13</span>Change log</h2>
-  <p class="lede">Updated against repository code on 1 October 2026.</p>
+  <h2><span class="num">14</span>Change log</h2>
+  <p class="lede">Updated against repository code and the supplied execution guide on 2 November 2026.</p>
+
+
+  <div class="card">
+    <h3>2 November 2026 — Hosted workbench, research-roadmap reconciliation and Git history</h3>
+    <p>The deployment branch includes the newer main-branch commit <code>eb5d407</code> (6 October: editorial-title removal and ablation plotting assets). Existing commits and authorship were preserved.</p>
+    <ul>
+      <li><code>6268ba9</code>: committed the current research workbench, lab/media/audit implementation, regressions and Streamlit deployment setup.</li>
+      <li><code>aebe536</code>: replaced the mixed package-index setup with explicit CPU wheel URLs after the cloud resolver exposed a requests-version conflict.</li>
+      <li><code>74d18b6</code>: pinned PyArrow 24.0.0 to match the cloud compatibility guard.</li>
+      <li>This documentation refresh reconciles the supplied four-phase execution guide with actual CLI flags, artifacts, evaluation limits, test evidence and hosted scope.</li>
+    </ul>
+    <p>At the history check, <code>codex/streamlit-demo</code> matched its GitHub tracking branch and was three commits ahead of remote <code>main</code>, with no divergence. The local <code>main</code> reference was fast-forwarded to match remote main during this documentation review. Publishing a deployment branch does not itself merge those commits into GitHub main. A documentation follow-up commit records this refresh; historical commit subjects are retained rather than rewritten.</p>
+  </div>
 
   <div class="card">
     <h3>1 October 2026 &mdash; Frontend setup and documentation refresh</h3>
@@ -990,7 +924,7 @@ python scripts/06_budget.py --arm fused --variant student --from-scratch</code><
 <footer>
   <p>
     Minor Project &middot; supervisor Dr.&nbsp;Shivangi Surati &middot;
-    Updated 1 October 2026 against repository code and available local reports.
+    Updated 2 November 2026 against repository code and available local reports.
   </p>
   <p class="small">
     Use <a href="README.md">README.md</a> for current setup commands.
