@@ -31,6 +31,7 @@ log = logging.getLogger(__name__)
 #: item is not a negative, and treating it as one poisons the negative class.
 LABEL_TO_ID = {LABEL_REAL: 0, LABEL_FAKE: 1}
 ID_TO_LABEL = {v: k for k, v in LABEL_TO_ID.items()}
+INPUT_PIPELINE_VERSION = "selected-creative-ocr-v1"
 
 
 @dataclass
@@ -75,10 +76,27 @@ def pick_image(record: FactCheckRecord) -> str | None:
     return creatives[0].local_path
 
 
+def selected_ocr_text(record: FactCheckRecord) -> str:
+    """Use OCR from the chosen creative, matching the image branch's exposure.
+
+    Archive records can contain other screenshots or verdict graphics. Joining
+    all their OCR can reveal labels or describe a different image. The frontend
+    supplies one in-memory asset without a local path, which is handled too.
+    """
+    eligible = [a for a in record.images if a.role not in {"annotated", "site_chrome"}]
+    chosen_path = pick_image(record)
+    if chosen_path:
+        eligible = [a for a in eligible if a.local_path == chosen_path]
+    if not eligible:
+        return ""
+    asset = max(eligible, key=lambda a: (a.width or 0) * (a.height or 0))
+    return asset.ocr_text or ""
+
+
 def assemble_text(record: FactCheckRecord, cfg: TextConfig | None = None) -> str:
     """Build the text-branch input for one record, per configs/model.yaml."""
     cfg = cfg or TextConfig()
-    ocr = " ".join(a.ocr_text for a in record.images if a.ocr_text) if \
+    ocr = selected_ocr_text(record) if \
         "ocr_text" in cfg.fields else ""
     claim = record.claim_text if "claim_text" in cfg.fields else ""
     title = record.title if "title" in cfg.fields else ""
@@ -117,7 +135,7 @@ def is_image_only_claim(record: FactCheckRecord, threshold: float = 4.0) -> bool
     """
     from ..curation.finance_filter import score_text
 
-    ocr = " ".join(a.ocr_text for a in record.images if a.ocr_text)
+    ocr = selected_ocr_text(record)
     if not ocr.strip():
         return False
 

@@ -24,6 +24,8 @@ plus a per-backend cache so an interrupted run never repeats work.
 from __future__ import annotations
 
 import argparse
+import importlib.util
+import shutil
 import sys
 from collections import Counter
 from pathlib import Path
@@ -38,14 +40,18 @@ from fipd.utils.logging_setup import banner, setup  # noqa: E402
 
 def list_backends() -> int:
     print("\nOCR backends:\n")
-    for name, cls in BACKENDS.items():
+    for name in BACKENDS:
+        module = "pytesseract" if name == "tesseract" else name
         try:
-            eng = cls(languages=["en", "hi"])
-            eng.load()
-            status, detail = "available", ""
-        except Exception as e:
-            status, detail = "NOT installed", f"  ({type(e).__name__}: {str(e)[:60]})"
-        print(f"  {name:<12} {status}{detail}")
+            installed = importlib.util.find_spec(module) is not None
+        except (ImportError, ValueError):
+            installed = False
+        status = "module installed" if installed else "module NOT installed"
+        if name == "tesseract":
+            status += "; binary on PATH" if shutil.which("tesseract") else "; binary NOT on PATH"
+        print(f"  {name:<12} {status}; uninitialized")
+    print("\nOnly module/binary presence was checked. No engines were loaded or models")
+    print("downloaded; model files, language data and OCR quality were not checked.")
     print("\nInstall with:  pip install -e \".[ocr]\"")
     print("Tesseract also needs the binary + `hin` traineddata.\n")
     return 0
@@ -58,8 +64,15 @@ def main() -> int:
     ap.add_argument("--backend", default="easyocr", choices=sorted(BACKENDS))
     ap.add_argument("--languages", default="en,hi")
     ap.add_argument("--in-dir", default=None, help="default: <data-dir>/raw")
+    ap.add_argument("--out-dir", default=None,
+                    help="separate records/report/cache directory; default: <data-dir>/interim/ocr/<backend>")
     ap.add_argument("--limit", type=int, default=None, help="only process N records")
     ap.add_argument("--gpu", action="store_true", help="EasyOCR only")
+    ap.add_argument("--model-dir", default=None, help="EasyOCR model storage directory")
+    ap.add_argument("--no-download", action="store_true",
+                    help="EasyOCR: fail if required local model files are missing")
+    ap.add_argument("--threads", type=int, default=None,
+                    help="EasyOCR: cap PyTorch CPU threads during OCR")
     ap.add_argument("--include-annotated", action="store_true",
                     help="also OCR images tagged as fact-checker annotations (leaks verdicts)")
     ap.add_argument("--show", action="store_true", help="print each result as it is produced")
@@ -69,11 +82,18 @@ def main() -> int:
 
     if args.list_backends:
         return list_backends()
+    if args.threads is not None and args.threads < 1:
+        ap.error("--threads must be >= 1")
+    if args.backend != "easyocr" and (
+            args.model_dir or args.no_download or args.threads is not None or args.gpu):
+        ap.error("--model-dir, --no-download, --threads and --gpu apply to EasyOCR only")
 
     log = setup(args.verbose)
     data_dir = Path(args.data_dir)
     in_dir = Path(args.in_dir) if args.in_dir else data_dir / "raw"
-    out_dir = data_dir / "interim" / "ocr" / args.backend
+    out_dir = Path(args.out_dir) if args.out_dir else data_dir / "interim" / "ocr" / args.backend
+    if out_dir.resolve() == in_dir.resolve():
+        ap.error("--out-dir must differ from --in-dir to preserve source records")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     banner(f"Stage 03 — OCR  (backend: {args.backend})")
@@ -91,9 +111,23 @@ def main() -> int:
         log.error("No downloaded images. Did 01_collect.py run with images enabled?")
         return 1
 
-    engine = get_engine(args.backend,
-                        languages=[l.strip() for l in args.languages.split(",")],
-                        gpu=args.gpu)
+    options = {}
+    if args.backend == "easyocr":
+        options.update(gpu=args.gpu, download_enabled=not args.no_download)
+        if args.model_dir:
+            options["model_storage_directory"] = args.model_dir
+    try:
+        if args.threads is not None:
+            import torch
+
+            torch.set_num_threads(args.threads)
+        engine = get_engine(args.backend,
+                            languages=[l.strip() for l in args.languages.split(",") if l.strip()],
+                            **options)
+        engine.initialize()
+    except Exception as e:
+        log.error("Could not initialize %s: %s", args.backend, e)
+        return 1
 
     stats = ocr_records(
         records, engine,
@@ -124,6 +158,7 @@ def main() -> int:
     report = {
         "backend": args.backend,
         "languages": args.languages,
+        "status": "partial_failure" if stats["errors"] else "completed",
         **stats,
         "images_with_text": len(with_text),
         "mean_chars": round(sum(chars) / len(chars), 1) if chars else 0,
@@ -148,6 +183,10 @@ def main() -> int:
             print("-" * 62)
             print(a.local_path)
             print(a.ocr_text[:400])
+    if stats["errors"]:
+        log.error("OCR failed for %d image(s); see the cache for errors and rerun to retry",
+                  stats["errors"])
+        return 1
     return 0
 
 

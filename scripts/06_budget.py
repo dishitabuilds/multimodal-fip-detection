@@ -8,7 +8,7 @@ prints the pass/fail table that goes in the report.
     # what are we aiming at? (no torch needed, no model needed)
     python scripts/06_budget.py --targets-only
 
-    # measure an architecture before training it, random weights, no downloads
+    # random weights; encoder configuration files may still be fetched
     python scripts/06_budget.py --arm fused --variant student --from-scratch
 
     # measure the real thing, and score it against the teacher it distilled from
@@ -53,7 +53,7 @@ def main() -> int:
     ap.add_argument("--variant", default="student", choices=["student", "teacher"])
     ap.add_argument("--from-scratch", action="store_true",
                     help="random weights instead of downloading pretrained ones")
-    ap.add_argument("--checkpoint", default=None, help="measure this .pt/.onnx instead")
+    ap.add_argument("--checkpoint", default=None, help="measure this PyTorch .pt checkpoint")
     ap.add_argument("--targets-only", action="store_true",
                     help="print the budget and exit; no torch required")
     ap.add_argument("--f1", type=float, default=None, help="this model's macro-F1")
@@ -62,6 +62,9 @@ def main() -> int:
     ap.add_argument("--out-dir", default="data/processed")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
+    if args.checkpoint and Path(args.checkpoint).suffix.lower() == ".onnx":
+        ap.error("ONNX checkpoints are not supported by this PyTorch benchmark; "
+                 "supply a .pt checkpoint. ONNX needs an ONNX Runtime benchmark.")
 
     log = setup(args.verbose)
     cfg = load_model_config(args.config)
@@ -76,11 +79,13 @@ def main() -> int:
         f1=args.f1,
         teacher_f1=args.teacher_f1,
         conditions={
+            "purpose": getattr(cfg, "raw", {}).get("purpose", "research_candidate"),
             "batch_size": m.batch_size,
             "threads": m.threads,
             "image_size": m.image_size,
             "max_text_tokens": m.max_text_tokens,
-            "precision": m.precision,
+            "target_precision": m.precision,
+            "precision": "not measured",
             "timed_runs": m.timed_runs,
             "reference_machine": m.reference_machine,
         },
@@ -108,11 +113,17 @@ def main() -> int:
     log.info("building %s arm of the %s (%s / %s)", args.arm, args.variant,
              arch.text_encoder, arch.image_encoder)
 
-    model = build_arm(args.arm, arch, from_scratch=args.from_scratch)
+    # A checkpoint already supplies weights; avoid downloading pretrained
+    # weights just to replace them. Encoder config files may still be needed.
+    model = build_arm(args.arm, arch, from_scratch=args.from_scratch or bool(args.checkpoint))
     model.eval()
+    # This benchmark runs regular PyTorch modules, without quantisation or
+    # autocast. The config names the deployment target, not this execution's
+    # dtype. Make fp32 explicit even if a caller changed torch's default dtype.
+    model.float()
 
     if args.checkpoint:
-        ckpt = torch.load(args.checkpoint, map_location="cpu")
+        ckpt = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
         model.load_state_dict(ckpt.get("state_dict", ckpt))
         measurement.disk_mb = file_size_mb(args.checkpoint)
         log.info("loaded checkpoint %s", args.checkpoint)
@@ -121,12 +132,27 @@ def main() -> int:
         log.info("no checkpoint given — disk size is the fp32 weight footprint, "
                  "not the INT8 export the budget targets")
 
+    measurement.conditions["backend"] = "pytorch"
+    measurement.conditions["precision"] = "fp32"
+    import platform
+
+    measurement.conditions["execution_machine"] = platform.platform()
+    measurement.conditions["processor"] = platform.processor()
+    if m.precision != "fp32":
+        log.info("measuring fp32 PyTorch execution; configured %s is the deployment "
+                 "target and is not applied by this benchmark", m.precision)
+
     measurement.params_m = count_parameters(model) / 1e6
 
     # One synthetic sample, shaped exactly as the stated conditions say.
-    ids = torch.randint(0, 1000, (m.batch_size, m.max_text_tokens))
+    # Small/local tokenizers can have fewer than 1,000 entries. Sampling from
+    # the actual model vocabulary keeps every benchmark token ID valid.
+    vocab_size = int(model.text_encoder.backbone.config.vocab_size) \
+        if args.arm in ("text_only", "fused") else 1
+    ids = torch.randint(0, vocab_size, (m.batch_size, m.max_text_tokens))
     mask = torch.ones_like(ids)
-    pixels = torch.randn(m.batch_size, 3, m.image_size, m.image_size)
+    pixels = torch.randn(m.batch_size, 3, m.image_size, m.image_size,
+                         dtype=torch.float32)
 
     kw = {}
     if args.arm in ("text_only", "fused"):
@@ -144,8 +170,17 @@ def main() -> int:
     measurement.latency_p50_ms = timing["p50_ms"]
     measurement.latency_p95_ms = timing["p95_ms"]
     measurement.peak_ram_mb = peak_ram_mb()
+    measurement.conditions["ram_method"] = "OS peak resident set size"
+    measurement.conditions["ram_scope"] = (
+        "entire process lifetime, including imports, model construction/loading, "
+        "synthetic inputs, warm-up and timed inference; not isolated inference RAM"
+    )
+    if measurement.peak_ram_mb is None:
+        measurement.conditions["ram_method"] = "unavailable (no current-RSS substitute)"
     measurement.conditions["torch"] = torch.__version__
-    measurement.conditions["weights"] = "random" if args.from_scratch else "pretrained"
+    measurement.conditions["weights"] = (
+        "checkpoint" if args.checkpoint else "random" if args.from_scratch else "pretrained"
+    )
 
     print("\n" + format_report(measurement, budget))
 

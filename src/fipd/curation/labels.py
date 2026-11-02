@@ -22,6 +22,11 @@ from ..schema.records import LABEL_FAKE, LABEL_REAL, LABEL_UNKNOWN
 # Order matters: the first pattern that matches wins, so put the specific
 # "not false" style phrasings above the generic "false" pattern.
 _RULES: list[tuple[str, str]] = [
+    # Unresolved and qualified/negated truth must precede a generic "true".
+    (r"\b(unverified|unclear|inconclusive|insufficient evidence|research ongoing)\b", LABEL_UNKNOWN),
+    (r"\b(not true|half true|partly false|partially false)\b", LABEL_FAKE),
+    # Hindi "असत्य" contains "सत्य", so false forms also precede true forms.
+    (r"(झूठ|फर्जी|फ़र्ज़ी|भ्रामक|गलत|ग़लत|असत्य|अफवाह)", LABEL_FAKE),
     # --- explicitly true --------------------------------------------------
     (r"\b(true|correct|accurate|verified|genuine|authentic|confirmed)\b", LABEL_REAL),
     (r"\b(mostly true|largely true)\b", LABEL_REAL),
@@ -80,8 +85,38 @@ def label_from_title(title: str) -> str:
 
 
 def assign_label(record) -> str:
-    """Verdict first, title heuristic second, unknown last."""
+    """Validated human decision first, then verdict/title, unknown last."""
+    decision = manual_review_decision(record)
+    if decision:
+        return decision["label"]
     label = map_verdict(record.verdict_raw)
     if label == LABEL_UNKNOWN:
         label = label_from_title(record.title)
     return label
+
+
+def manual_review_decision(record) -> dict | None:
+    """Recognize the complete accepted decision produced by apply_reviews.py.
+
+    A suggested label or a bare reviewed:true flag is insufficient. The import
+    records reviewer attribution, exact input hashes, UID and approved image.
+    This validates provenance structure, not reviewer identity authentication.
+    """
+    decision = record.raw.get("manual_review")
+    if not isinstance(decision, dict):
+        return None
+    if decision.get("method") != "csv_review_import_v1" or decision.get("uid") != record.uid:
+        return None
+    if decision.get("task_relevant") is not True or decision.get("image_usable") is not True:
+        return None
+    if decision.get("label") not in {LABEL_FAKE, LABEL_REAL}:
+        return None
+    if not isinstance(decision.get("reviewer_name"), str) or not decision["reviewer_name"].strip():
+        return None
+    for field in ("review_csv_sha256", "source_records_sha256"):
+        if not re.fullmatch(r"[0-9a-f]{64}", str(decision.get(field, ""))):
+            return None
+    path = decision.get("image_path")
+    if not path or not any(a.local_path == path and a.role == "creative" for a in record.images):
+        return None
+    return decision

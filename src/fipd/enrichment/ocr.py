@@ -113,14 +113,18 @@ class OCREngine(ABC):
     def _run(self, image_path: str) -> tuple[list[str], list[float]]:
         """Return (lines, confidences)."""
 
+    def initialize(self) -> None:
+        """Load once, raising an error so batch callers can fail before work starts."""
+        if not self._loaded:
+            self.load()
+            self._loaded = True
+
     def read(self, image_path: str | Path) -> OCRResult:
         image_path = str(image_path)
-        if not self._loaded:
-            try:
-                self.load()
-                self._loaded = True
-            except Exception as e:
-                return OCRResult(backend=self.name, error=f"load failed: {e}")
+        try:
+            self.initialize()
+        except Exception as e:
+            return OCRResult(backend=self.name, error=f"load failed: {e}")
 
         t0 = time.perf_counter()
         try:
@@ -188,6 +192,7 @@ class EasyOCREngine(OCREngine):
             self.languages,
             gpu=self.options.get("gpu", False),
             model_storage_directory=model_dir,
+            download_enabled=self.options.get("download_enabled", True),
             verbose=False,
         )
 
@@ -327,7 +332,10 @@ def ocr_records(
 
             key = str(asset.local_path)
             result = cache.get(key)
-            if result is not None:
+            # Failed results are diagnostic cache entries, not completed work.
+            # A repaired installation or model directory must be able to retry
+            # them on a later run without deleting the successful results.
+            if result is not None and not result.error:
                 stats["cache_hits"] += 1
             else:
                 result = engine.read(path)

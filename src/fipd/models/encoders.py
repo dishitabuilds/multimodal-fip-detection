@@ -55,9 +55,9 @@ def _nn():
 def build_text_encoder(name: str, dropout: float = 0.1, from_scratch: bool = False):
     """Wrap a HuggingFace text model (MuRIL, IndicBERT, DistilBERT, ...).
 
-    `from_scratch` builds random weights from the config alone, downloading
-    nothing. That is how the shape tests run offline and how a smoke test of
-    the whole training loop stays cheap.
+    `from_scratch` builds random weights from configuration, avoiding pretrained
+    weight downloads. Remote configuration files can still be fetched unless
+    the name points to local assets or an available cache.
     """
     nn = _nn()
     transformers = require_transformers()

@@ -23,7 +23,7 @@ from typing import Any
 import numpy as np
 
 from ..models.encoders import require_torch
-from .metrics import Metrics, best_threshold, evaluate
+from .metrics import ConfusionMatrix, Metrics, best_threshold, evaluate
 
 log = logging.getLogger(__name__)
 
@@ -43,6 +43,13 @@ class RunResult:
     manifest_hash: str = ""
     config: dict[str, Any] = field(default_factory=dict)
     history: list[dict] = field(default_factory=list)
+    variant: str = ""
+    experiment_id: str = ""
+    cohort_hash: str = ""
+    cohort_ids: dict[str, list[str]] = field(default_factory=dict)
+    evaluation_ids: dict[str, list[str]] = field(default_factory=dict)
+    evaluations: dict[str, Metrics] = field(default_factory=dict)
+    checkpoint: str = ""
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -56,6 +63,21 @@ class RunResult:
         path.write_text(json.dumps(self.to_dict(), indent=2, default=str),
                         encoding="utf-8")
         return path
+
+    @classmethod
+    def load(cls, path: str | Path) -> "RunResult":
+        """Restore training history when evaluating an existing checkpoint."""
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+
+        def metric(value):
+            if value is None:
+                return None
+            return Metrics(**{**value, "confusion": ConfusionMatrix(**value["confusion"])})
+
+        data["val"], data["test"] = metric(data.get("val")), metric(data.get("test"))
+        data["evaluations"] = {name: metric(value)
+                               for name, value in data.get("evaluations", {}).items()}
+        return cls(**data)
 
 
 def set_seed(seed: int) -> None:
@@ -120,16 +142,27 @@ def train_arm(
     device: str | None = None,
     checkpoint_dir: str | Path | None = None,
     manifest_hash: str = "",
+    variant: str = "",
+    experiment_id: str = "",
+    cohort_hash: str = "",
+    cohort_ids: dict[str, list[str]] | None = None,
+    run_config: dict[str, Any] | None = None,
 ) -> RunResult:
     """Fine-tune one arm, early-stopping on validation macro-F1.
 
     macro-F1 rather than loss or accuracy: on imbalanced data, validation loss
     can improve while the minority class gets worse, and that is the class the
-    whole project is about.
+    whole project is about. Call ``set_seed(seed)`` before constructing the
+    model as well: reseeding here controls training, not existing weights.
     """
     torch = require_torch()
     import torch.nn as nn
 
+    if epochs < 1 or not len(train_loader) or not len(val_loader):
+        raise ValueError("training requires epochs >= 1 and non-empty train/val loaders")
+    ckpt = Path(checkpoint_dir) / f"{arm}_seed{seed}.pt" if checkpoint_dir else None
+    if ckpt and ckpt.exists():
+        raise FileExistsError(f"checkpoint already exists: {ckpt}; use a new experiment ID")
     set_seed(seed)
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
@@ -168,10 +201,18 @@ def train_arm(
             dtype=torch.float, device=device)
     criterion = nn.CrossEntropyLoss(weight=weight_tensor)
 
-    result = RunResult(arm=arm, seed=seed, manifest_hash=manifest_hash,
-                       config={"lr": lr, "head_lr": head_lr, "epochs": epochs,
-                               "weight_decay": weight_decay,
-                               "class_weights": class_weights or {}})
+    result = RunResult(
+        arm=arm, seed=seed, manifest_hash=manifest_hash, variant=variant,
+        experiment_id=experiment_id, cohort_hash=cohort_hash,
+        cohort_ids=cohort_ids or {}, checkpoint=str(ckpt) if ckpt else "",
+        config={**(run_config or {}),
+                "execution": {"device": str(device), "precision": "fp32",
+                              "torch": str(torch.__version__)}, "optimizer": {
+            "lr": lr, "head_lr": head_lr, "epochs": epochs,
+            "weight_decay": weight_decay, "warmup_ratio": warmup_ratio,
+            "max_grad_norm": max_grad_norm, "patience": patience,
+            "class_weights": class_weights or {}}},
+    )
     best_score, best_state, epochs_without_gain = -1.0, None, 0
     started = time.perf_counter()
 
@@ -229,11 +270,15 @@ def train_arm(
 
     result.train_seconds = time.perf_counter() - started
 
-    if checkpoint_dir:
-        ckpt = Path(checkpoint_dir) / f"{arm}_seed{seed}.pt"
+    if ckpt:
         ckpt.parent.mkdir(parents=True, exist_ok=True)
-        torch.save({"state_dict": model.state_dict(), "arm": arm, "seed": seed,
-                    "threshold": result.decision_threshold}, ckpt)
+        # Keep tensor state CPU-portable and all metadata safe for weights_only
+        # loading. Full evaluation reports are saved beside the training run.
+        torch.save({"state_dict": best_state, "arm": arm, "seed": seed,
+                    "threshold": result.decision_threshold, "variant": variant,
+                    "experiment_id": experiment_id, "manifest_hash": manifest_hash,
+                    "cohort_hash": cohort_hash, "cohort_ids": result.cohort_ids,
+                    "config": result.config}, ckpt)
         log.info("checkpoint -> %s", ckpt)
 
     return result

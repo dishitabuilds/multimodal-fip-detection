@@ -120,7 +120,7 @@
   }
   .diagram svg{display:block; margin:0 auto; max-width:100%; height:auto}
 
-  .files{font:13px/1.75 var(--mono); background:var(--code-bg);
+  .files{font:13px/1.75 var(--mono); background:var(--code-bg); white-space:pre;
          border:1px solid var(--line); border-radius:8px; padding:18px; overflow-x:auto}
   .files .dir{color:var(--accent); font-weight:600}
   .files .cmt{color:var(--muted)}
@@ -145,10 +145,10 @@
       behind each decision. Supervisor: Dr.&nbsp;Shivangi Surati.
     </p>
     <div class="meta">
-      <span class="chip ok">Phase&nbsp;1 pipeline complete</span>
-      <span class="chip">172 tests passing</span>
-      <span class="chip">4,663 lines Python</span>
-      <span class="chip warn">Awaiting first collection run</span>
+      <span class="chip ok">Collection pipeline implemented</span>
+      <span class="chip ok">Streamlit frontend added</span>
+      <span class="chip">Updated 1 October 2026</span>
+      <span class="chip warn">Trained checkpoint required</span>
     </div>
   </div>
 </header>
@@ -157,11 +157,15 @@
   <div class="wrap">
     <a href="#problem">Problem</a>
     <a href="#design">System design</a>
+    <a href="#setup">Setup</a>
+    <a href="#frontend">Frontend</a>
     <a href="#findings">Investigation</a>
     <a href="#decisions">Decisions</a>
     <a href="#modules">Modules</a>
     <a href="#testing">Testing</a>
+    <a href="#evidence">Current evidence</a>
     <a href="#problems">Open problems</a>
+    <a href="#budget">Lightweight budget</a>
     <a href="#roadmap">Roadmap</a>
     <a href="#log">Change log</a>
   </div>
@@ -172,7 +176,7 @@
 <!-- ============================================================ -->
 <section id="problem">
   <h2><span class="num">01</span>The problem</h2>
-  <p class="lede">Why a text-only classifier is structurally unable to solve this.</p>
+  <p class="lede">Why captions alone can miss the claim carried by an image.</p>
 
   <p>
     Fraudulent investment promotions hide their claim <strong>inside the
@@ -183,34 +187,37 @@
     <em>"DM for details"</em>.
   </p>
   <p>
-    A text-only classifier sees only the harmless half. That is not a tuning
-    problem; the signal is not present in its input at all. This is the gap the
-    project targets.
+    A caption-only classifier cannot see the image evidence. OCR brings
+    recognized in-image wording into the text branch, while the image branch
+    can add layout and visual signals that OCR does not preserve. The
+    implemented text-only arm includes OCR, so it must be distinguished from
+    a caption-only baseline when evaluating this premise.
   </p>
 
-  <h3>Three modalities</h3>
+  <h3>Implemented modalities and planned extension</h3>
   <table>
-    <thead><tr><th>#</th><th>Modality</th><th>What it contributes</th><th>Encoder</th><th>Phase</th></tr></thead>
+    <thead><tr><th>Modality</th><th>What it contributes</th><th>Configured encoder</th><th>Status</th></tr></thead>
     <tbody>
-      <tr><td>1</td><td>Image</td><td>Visual manipulation, forged logos, chart distortion</td><td>ViT / CLIP</td><td>2</td></tr>
-      <tr><td>2</td><td>Text</td><td>Caption <em>plus OCR of in-image text</em>, code-mixed Hindi/English</td><td>MuRIL / IndicBERT</td><td>2</td></tr>
-      <tr><td>3</td><td>Propagation</td><td>How a post travels channel to channel on Telegram</td><td>GNN (PyG)</td><td>3</td></tr>
+      <tr><td>Image</td><td>Visual patterns, forged logos, chart distortion</td><td>ViT-Small student / ViT-Base teacher</td><td>Model code implemented</td></tr>
+      <tr><td>Text</td><td>Caption or archive claim text plus OCR, code-mixed Hindi/English</td><td>Multilingual DistilBERT student / MuRIL teacher</td><td>Model code implemented</td></tr>
+      <tr><td>Propagation</td><td>How a post travels between Telegram channels</td><td>GNN (PyTorch Geometric), proposed</td><td>Future work</td></tr>
     </tbody>
   </table>
   <p>
-    A cross-attention layer fuses them. An ablation comparing text-only,
-    image-only and fused models measures what each modality actually
-    contributes, rather than assuming it.
+    Bidirectional cross-attention currently fuses image and text features.
+    The training CLI compares text-only, image-only and fused arms. The
+    propagation branch is a proposed extension and is not used by the frontend.
   </p>
 
   <div class="callout">
-    <span class="tag">Empirical support</span>
+    <span class="tag">Research premise</span>
     <p>
-      The investigation in §03 found that the dominant Indian fraud pattern in
-      2024&ndash;26 is <strong>deepfake celebrity endorsement</strong> — a public
-      figure appearing to promote an investment platform. In every such case the
-      caption is innocuous and the deception lives entirely in the video frame.
-      That is direct evidence for the multimodal premise, not just an assumption.
+      The earlier source investigation found examples of impersonated public
+      figures promoting investment platforms. Such examples motivate combining
+      image and text evidence. Demonstrating the benefit still requires a
+      controlled ablation on reviewed data, including cases with a benign
+      caption and an image-carried claim. The repository does not supply that
+      evaluation result.
     </p>
   </div>
 </section>
@@ -221,8 +228,9 @@
   <p class="lede">Layered by pipeline stage, with one shared data contract.</p>
 
   <p>
-    The system is organised as a linear pipeline. Each stage reads the previous
-    stage's output, writes its own, and is independently resumable. Every stage
+    The system is organised as a staged pipeline. Collection resumes by UID and
+    enrichment/OCR cache results; curation and splitting regenerate outputs.
+    Pass stage-specific input paths to preserve enrichment between stages. Every stage
     speaks the same record type, so adding a source or an encoder never requires
     touching the stages around it.
   </p>
@@ -273,8 +281,8 @@
 
       <text x="716" y="18" class="st">PHASE 2</text>
       <rect class="bx" x="712" y="26" width="136" height="66" stroke-dasharray="4 3"/>
-      <text x="724" y="48" class="t">models</text>
-      <text x="724" y="66" class="s">MuRIL + ViT</text>
+      <text x="724" y="48" class="t">model code</text>
+      <text x="724" y="66" class="s">text + image</text>
       <text x="724" y="80" class="s">cross-attention</text>
 
       <line class="ln" x1="162" y1="59" x2="180" y2="59" marker-end="url(#ar)"/>
@@ -304,50 +312,155 @@
 
       <rect class="bx" x="632" y="236" width="216" height="44"/>
       <text x="646" y="256" class="t">data/processed/</text>
-      <text x="646" y="271" class="s">split_manifest.json (committed)</text>
+      <text x="646" y="271" class="s">split_manifest.json (local)</text>
 
-      <text x="8" y="312" class="s">Every stage is resumable: existing UIDs are skipped, HTTP responses and OCR results are cached to disk.</text>
-      <text x="8" y="328" class="s">Highlighted stages (04, 05) are the ones that protect result validity — see §04 and §07.</text>
+      <text x="8" y="312" class="s">Collection resumes by UID; HTTP and OCR results are cached. Curation and splitting regenerate their outputs.</text>
+      <text x="8" y="328" class="s">Stages 04 and 05 protect result validity — see design decisions and open problems below.</text>
     </svg>
   </div>
 
   <h3>Repository layout</h3>
   <div class="files">
 <span class="dir">Minor Project/</span>
-├── PROJECT_DOCUMENTATION.html  <span class="cmt">this file</span>
-├── pyproject.toml              <span class="cmt">installable package; extras per phase</span>
+├── app.py                     <span class="cmt">Streamlit frontend</span>
+├── requirements-frontend.txt  <span class="cmt">editable package + frontend extra</span>
+├── PROJECT_DOCUMENTATION.html <span class="cmt">this file</span>
+├── pyproject.toml             <span class="cmt">installable package; optional extras</span>
 ├── README.md
-├── <span class="dir">configs/</span>sources.yaml       <span class="cmt">every tunable parameter, no magic numbers in code</span>
+├── <span class="dir">configs/</span>                  sources.yaml · model.yaml
 ├── <span class="dir">src/fipd/</span>
-│   ├── <span class="dir">schema/</span>      records.py            <span class="cmt">the shared contract</span>
-│   ├── <span class="dir">collection/</span>  base · wordpress ·
-│   │                article · googlefactcheck · registry
-│   ├── <span class="dir">enrichment/</span>  ocr.py · translit.py
-│   ├── <span class="dir">curation/</span>    finance_filter · labels ·
-│   │                dedup.py · splits.py
-│   ├── <span class="dir">datasets/</span>    <span class="cmt">(Phase 2)</span>
-│   └── <span class="dir">utils/</span>       http · io · logging_setup
-├── <span class="dir">scripts/</span>   01_collect · 02_enrich_images · 03_ocr ·
-│              04_curate · 05_split · calibrate_dedup
-├── <span class="dir">tests/</span>     unit/ · integration/ · fixtures/ · run_all.py
-├── <span class="dir">docs/</span>      CHECKLIST.md · PHASE0_GUIDE.md
-└── <span class="dir">data/</span>      <span class="cmt">gitignored — large and re-derivable</span>
+│   ├── <span class="dir">schema/</span>                records.py
+│   ├── <span class="dir">collection/</span>            WordPress · sitemap · Google API
+│   ├── <span class="dir">enrichment/</span>            OCR · transliteration
+│   ├── <span class="dir">curation/</span>              finance filter · labels · dedup · splits
+│   ├── <span class="dir">datasets/</span>              examples.py · torch_data.py
+│   ├── <span class="dir">models/</span>                config · encoders · arms · budget
+│   ├── <span class="dir">training/</span>              metrics.py · loop.py
+│   └── <span class="dir">utils/</span>                 HTTP · IO · logging
+├── <span class="dir">scripts/</span>                  stages 01, 01b, 02–07 + dedup calibration
+├── <span class="dir">test_samples/</span>             11 tracked demo images
+├── <span class="dir">tests/</span>                    unit · integration · fixtures · run_all.py
+├── <span class="dir">docs/</span>                     earlier planning guides/checklist
+└── <span class="dir">data/</span>                     local data, caches, reports, checkpoints
   </div>
 
   <h3>Why this shape</h3>
   <ul>
     <li><strong>Stage numbering in <code>scripts/</code></strong> makes the execution order unambiguous. A new team member can read the directory listing and know what runs when.</li>
     <li><strong>One package, layered by stage</strong> rather than by file type. Adding an OCR backend touches one directory; adding a source touches one directory.</li>
-    <li><strong>Installable via <code>pyproject.toml</code></strong>, so imports are real imports rather than <code>sys.path</code> manipulation. Optional extras (<code>[ocr]</code>, <code>[model]</code>, <code>[graph]</code>, <code>[serve]</code>) keep a Phase-1 install from pulling in torch.</li>
-    <li><strong>Config over constants.</strong> Thresholds, sources, seeds and ratios live in YAML. Every number that affects a result is visible in one file and quotable in the report.</li>
-    <li><strong>Thin scripts, thick library.</strong> The CLIs parse arguments and print reports; all logic sits in <code>src/fipd/</code> where it can be unit-tested.</li>
+    <li><strong>Installable via <code>pyproject.toml</code></strong>, so imports are real imports rather than <code>sys.path</code> manipulation. The base install supports collection without torch; optional extras (<code>[ocr]</code>, <code>[model]</code>, <code>[graph]</code>, <code>[serve]</code>, <code>[frontend]</code>) add the dependencies needed for later work.</li>
+    <li><strong>Config over constants.</strong> Core sources, architecture, training seeds and split ratios live in configuration. Record the checkpoint threshold and frontend preprocessing alongside that configuration when reporting a result.</li>
+    <li><strong>Thin scripts, thick library.</strong> Most pipeline logic sits in <code>src/fipd/</code>; stage CLIs handle arguments and reports. The standalone AMFI collector and frontend also contain application logic.</li>
   </ul>
 </section>
 
 <!-- ============================================================ -->
+<section id="setup">
+  <h2><span class="num">03</span>Setup</h2>
+  <p class="lede">Run from the repository root with standard CPython 3.10 or newer.</p>
+
+  <h3>Windows / PowerShell frontend setup</h3>
+  <pre><code>python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-frontend.txt
+.\.venv\Scripts\python.exe -m streamlit run app.py</code></pre>
+  <p>
+    Open <a href="http://localhost:8501">http://localhost:8501</a>. These commands
+    use the virtual environment directly and do not require activating a
+    PowerShell script. Reuse an existing <code>.venv</code> by running the
+    install and launch commands. Use standard Windows CPython; MSYS2/MinGW
+    Python may not have compatible PyTorch wheels.
+  </p>
+  <p>
+    <code>requirements-frontend.txt</code> installs <code>-e .[frontend]</code>:
+    the base package plus Streamlit, PyTorch, torchvision, Transformers,
+    EasyOCR and SentencePiece. This focused extra avoids requiring all
+    PaddleOCR and API/export dependencies for the demo.
+  </p>
+
+  <h3>Collection-only setup and optional extras</h3>
+  <pre><code>.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\python.exe tests/run_all.py</code></pre>
+  <table>
+    <thead><tr><th>Extra</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>.[frontend]</code></td><td>Streamlit image/text demo with EasyOCR and model inference dependencies.</td></tr>
+      <tr><td><code>.[ocr]</code></td><td>All three OCR Python backends plus optional transliteration library; Tesseract also needs its external binary and language data.</td></tr>
+      <tr><td><code>.[model]</code></td><td>Training, evaluation and model measurement dependencies.</td></tr>
+      <tr><td><code>.[graph]</code></td><td>Dependencies for the planned Telegram/graph phase.</td></tr>
+      <tr><td><code>.[serve]</code></td><td>Streamlit plus FastAPI/ONNX serving and export dependencies; does not install the full inference stack.</td></tr>
+      <tr><td><code>.[dev]</code></td><td>Development tooling.</td></tr>
+    </tbody>
+  </table>
+  <p>
+    Use <code>python -m pip install -e ".[model]"</code> for training.
+    In subsequent commands, <code>python</code> means the active virtual
+    environment's interpreter; otherwise use
+    <code>.\.venv\Scripts\python.exe</code> explicitly.
+  </p>
+</section>
+
+<!-- ============================================================ -->
+<section id="frontend">
+  <h2><span class="num">04</span>Streamlit frontend</h2>
+  <p class="lede">An image-and-text research demo in <code>app.py</code>.</p>
+
+  <p>
+    The interface accepts JPG, PNG and WebP creatives, an optional caption,
+    and six preset selections: three scam examples and three AMFI investor
+    education examples. The repository contains 11 files in
+    <code>test_samples/</code>; these are demo assets, and there is no committed
+    provenance manifest proving that they belong to a held-out test split.
+  </p>
+  <div class="callout">
+    <span class="tag">Preview versus model analysis</span>
+    <p>
+      Without <code>data/checkpoints/fused_seed42.pt</code>, the interface
+      remains available for upload and sample previews, reports the missing
+      checkpoint and disables analysis. It does not download model weights
+      merely to display the page. Place a trained student fused checkpoint
+      at that path to enable analysis.
+    </p>
+  </div>
+  <p>
+    The checkpoint must match <code>configs/model.yaml</code> and contain
+    <code>state_dict</code>; the training loop also stores its
+    validation-selected <code>threshold</code>. Components initialise on the
+    first analysis. Encoder weights come from that checkpoint; uncached
+    Hugging Face encoder configuration files/tokenizer and EasyOCR weights
+    may need an initial network download. Frontend OCR weights are stored in
+    <code>data/models/easyocr/</code>.
+  </p>
+
+  <h3>What an analysis displays</h3>
+  <ul>
+    <li>A model prediction and the two class scores, with processing time.</li>
+    <li>Regex-based keyword indicators for return promises, payout wording, referrals, authority mentions and investor-protection notices. These checks are separate from the neural model.</li>
+    <li>Extracted OCR text and diagnostics drawn from the configured architecture.</li>
+  </ul>
+  <p>
+    The frontend uses the dataset's text-assembly helper, including configured
+    normalization/transliteration. OCR text precedes the caption with a
+    separator; the tokenizer pads/truncates
+    to 128 tokens, and images are resized to 224&times;224 with ImageNet
+    normalization. The current student uses multilingual DistilBERT,
+    ViT-Small, 384-dimensional fusion, six attention heads, one fusion layer
+    and dropout 0.1. Processing time includes OCR, preprocessing and inference,
+    plus initialization on the first run, so it is not comparable to the
+    model-only latency budget.
+  </p>
+  <p>
+    Predictions do not establish legal authorization or regulator approval.
+    No tracked checkpoint or reproducible held-out score accompanies the
+    collaborator's frontend commit. The earlier hardcoded
+    <code>macro-F1 = 1.000</code> and four-head architecture claims have
+    therefore been removed from the current frontend.
+  </p>
+</section>
+
+<!-- ============================================================ -->
 <section id="findings">
-  <h2><span class="num">03</span>Investigation</h2>
-  <p class="lede">What the data sources actually look like, measured rather than assumed.</p>
+  <h2><span class="num">05</span>Investigation</h2>
+  <p class="lede">Historical source investigation retained for context; live endpoints were not rechecked for this update.</p>
 
   <p>
     Before writing any scraper, each proposed source was probed for its
@@ -357,7 +470,7 @@
   </p>
 
   <h3>Alt News is dominated by political content</h3>
-  <p>Category counts pulled from the live WordPress API:</p>
+  <p>Category counts recorded during the earlier WordPress API investigation:</p>
   <table>
     <thead><tr><th>Category</th><th class="num-col">Posts</th><th>Relevance</th></tr></thead>
     <tbody>
@@ -400,7 +513,7 @@
     <li>"Did Amit Shah Announce This Financial Scheme During A Rally? No, Viral Video Is Doctored"</li>
   </ul>
 
-  <h3>Access notes</h3>
+  <h3>Access notes from the earlier investigation</h3>
   <table>
     <thead><tr><th>Source</th><th>Method</th><th>Status</th></tr></thead>
     <tbody>
@@ -415,10 +528,10 @@
   <div class="callout ok">
     <span class="tag">Design change from this investigation</span>
     <p>
-      Every serious fact-checker publishes <a href="https://schema.org/ClaimReview">schema.org
-      <code>ClaimReview</code></a> markup — the structured data Google reads to
-      build fact-check panels — and Google indexes all of it behind a free API.
-      That became the primary discovery layer: one query surface returning claim
+      Some fact-check publishers provide <a href="https://schema.org/ClaimReview">schema.org
+      <code>ClaimReview</code></a> markup — structured data used to
+      describe reviewed claims. The collection code can also query the Google Fact Check Tools API when a key is configured.
+      That provides a cross-publisher discovery route: one query surface returning claim
       text, the publisher's own verdict, language and URL across every publisher
       at once, instead of five HTML parsers that break on redesign.
     </p>
@@ -434,7 +547,7 @@
 
 <!-- ============================================================ -->
 <section id="decisions">
-  <h2><span class="num">04</span>Design decisions</h2>
+  <h2><span class="num">06</span>Design decisions</h2>
   <p class="lede">Each one had a plausible alternative. Stating what was rejected, and why, is the defensible form.</p>
 
   <div class="decision">
@@ -525,239 +638,351 @@
 
 <!-- ============================================================ -->
 <section id="modules">
-  <h2><span class="num">05</span>Module reference</h2>
-  <p class="lede">What each file does and the non-obvious parts of how.</p>
+  <h2><span class="num">07</span>Module reference</h2>
+  <p class="lede">Implemented responsibilities and the details that affect reproducibility.</p>
 
-  <h3>schema</h3>
   <table>
-    <thead><tr><th>File</th><th>Responsibility</th></tr></thead>
+    <thead><tr><th>Module / file</th><th>Responsibility</th></tr></thead>
     <tbody>
-      <tr><td><code>records.py</code></td><td><code>FactCheckRecord</code> and <code>ImageAsset</code> — the contract every stage speaks. The <code>uid</code> property (SHA-1 of <code>source:source_id</code>) is what makes every stage resumable: stable across re-runs, unique across sources.</td></tr>
+      <tr><td><code>schema/records.py</code></td><td><code>FactCheckRecord</code> / <code>ImageAsset</code>, stable source-derived IDs, provenance, labels and image roles shared across stages.</td></tr>
+      <tr><td><code>collection/base.py</code></td><td>Image discovery from lazy-load attributes, widest srcset variants, alt/caption text, resolved URLs and annotation/chrome tagging.</td></tr>
+      <tr><td><code>collection/wordpress.py</code></td><td>WordPress REST discovery with search/category modes, category-map caching and article/featured-image extraction.</td></tr>
+      <tr><td><code>collection/article.py</code> / <code>jsonld.py</code></td><td>Sitemap traversal and article parsing, including ClaimReview, NewsArticle and page-metadata fallbacks.</td></tr>
+      <tr><td><code>collection/googlefactcheck.py</code> / <code>registry.py</code></td><td>Publisher and keyword API sweeps; YAML-built source adapters and configured fallback routes.</td></tr>
+      <tr><td><code>enrichment/ocr.py</code></td><td>PaddleOCR, EasyOCR and Tesseract behind a lazy <code>OCREngine</code> interface; quality/error results, script proportions and disk cache. EasyOCR uses an explicit storage directory, otherwise local <code>data/models/easyocr</code> when available, otherwise its default. This is model-path fallback, not automatic fallback between OCR engines.</td></tr>
+      <tr><td><code>enrichment/translit.py</code></td><td>NFC normalization, curated romanised-Hindi lexicon and text assembly with OCR first.</td></tr>
+      <tr><td><code>curation/finance_filter.py</code> / <code>labels.py</code></td><td>Weighted positive/negative finance lexicons; ordered verdict rules and title-based label fallback. Unresolved labels remain <code>unknown</code>.</td></tr>
+      <tr><td><code>curation/dedup.py</code> / <code>splits.py</code></td><td>pHash/dHash/cHash, boilerplate-image suppression, text shingles, deterministic cluster representatives, group-aware splitting and leakage checks.</td></tr>
+      <tr><td><code>datasets/examples.py</code></td><td>Curated records to labelled text/image examples; <code>real=0</code>, <code>fake=1</code>; excludes annotation/chrome images and selects the largest candidate creative. Image-only-claim flags are a caption proxy requiring review.</td></tr>
+      <tr><td><code>datasets/torch_data.py</code></td><td>Module-level <code>ExampleDataset</code> for pickling, tokenizer tensors, image resize/normalization, mild training augmentation, zero-image substitution for missing/corrupt files, seeded loaders and UID-preserving collation. Default configured workers are now zero; <code>drop_last=False</code> remains unchanged.</td></tr>
+      <tr><td><code>models/config.py</code> / <code>encoders.py</code> / <code>arms.py</code></td><td>Architecture/config validation, Hugging Face text/image encoders and the three arms. Fused attention runs text-to-image and image-to-text; concat fusion is also implemented.</td></tr>
+      <tr><td><code>training/metrics.py</code> / <code>loop.py</code></td><td>Precision/recall/F1, macro-F1, PR/ROC-AUC, threshold selection, seeded training, class weighting, early stopping, validation-selected checkpoints and per-run reports.</td></tr>
+      <tr><td><code>models/budget.py</code></td><td>Budget targets, measurements, pass/fail reporting and timing helpers. Missing measurements stay explicit.</td></tr>
+      <tr><td><code>utils/</code></td><td>Shared HTTP caching/retries/rate limiting and robots handling, record IO and logging. The standalone AMFI collector currently bypasses the shared HTTP client.</td></tr>
     </tbody>
   </table>
 
-  <h3>collection</h3>
+  <h3>Configured model architectures</h3>
   <table>
-    <thead><tr><th>File</th><th>Responsibility</th></tr></thead>
+    <thead><tr><th>Setting</th><th>Student (frontend)</th><th>Teacher</th></tr></thead>
     <tbody>
-      <tr><td><code>base.py</code></td><td>Shared machinery. <code>extract_images()</code> is the intricate part: reads <code>data-src</code>/<code>data-lazy-src</code> before <code>src</code> so lazy-loaded images are not missed, parses <code>srcset</code> and picks the <em>widest</em> variant (OCR needs legible text; the default <code>src</code> is often a 300px thumbnail), resolves relative URLs, captures <code>alt</code> and <code>&lt;figcaption&gt;</code>, tags suspected verdict stamps.</td></tr>
-      <tr><td><code>wordpress.py</code></td><td>WP REST API. Search mode and category mode; caches the category map; unescapes HTML entities; puts the featured image first because on fact-check sites the hero is very often the viral creative itself.</td></tr>
-      <tr><td><code>article.py</code></td><td>Sitemap discovery (recursing into indexes, filtering by path) plus ClaimReview JSON-LD parsing, walking <code>@graph</code> arrays. Falls back to <code>NewsArticle</code>, then Open Graph, then <code>&lt;title&gt;</code>.</td></tr>
-      <tr><td><code>googlefactcheck.py</code></td><td>Two-pass sweep: publisher filter across nine Indian fact-checkers, then keyword queries. One API claim can carry several publisher reviews; each is emitted separately, which is correct — they are independent labelled items with different articles and images.</td></tr>
-      <tr><td><code>registry.py</code></td><td>Builds scrapers from YAML. Adding a WordPress or sitemap source needs no code change.</td></tr>
+      <tr><td>Text encoder</td><td><code>distilbert-base-multilingual-cased</code></td><td><code>google/muril-base-cased</code></td></tr>
+      <tr><td>Image encoder</td><td><code>WinKawaks/vit-small-patch16-224</code></td><td><code>google/vit-base-patch16-224</code></td></tr>
+      <tr><td>Fusion width / heads / layers</td><td>384 / 6 / 1</td><td>768 / 8 / 2</td></tr>
+      <tr><td>Dropout</td><td>0.1</td><td>0.1</td></tr>
     </tbody>
   </table>
+  <p>
+    These are configured architectures, not proof of a trained or compressed
+    deployment. The training configuration specifies seeds 13, 42 and 1337,
+    eight epochs, batch size 16, encoder LR 2e-5 and head LR 1e-4, with
+    validation macro-F1 for early stopping.
+  </p>
 
-  <h3>enrichment</h3>
-  <table>
-    <thead><tr><th>File</th><th>Responsibility</th></tr></thead>
-    <tbody>
-      <tr><td><code>ocr.py</code></td><td>Three backends (PaddleOCR / EasyOCR / Tesseract) behind one <code>OCREngine</code> interface, imported lazily so this module never drags in torch. Results carry a <code>script_profile</code> (Devanagari / Latin / digit proportions) and a <code>looks_like_garbage()</code> quality gate. A disk cache makes the slowest stage resumable; engine failures return an error result rather than raising.</td></tr>
-      <tr><td><code>translit.py</code></td><td>NFC normalisation (Devanagari has multiple encodings for the same visible character), the romanised-Hindi lexicon, code-mixing detection, and <code>build_text_input()</code> which assembles the text branch's input.</td></tr>
-    </tbody>
-  </table>
+  <h3>Pipeline commands</h3>
+  <pre><code>python scripts/01_collect.py                  # archive collection
+python scripts/01b_collect_legitimate.py --limit 100  # AMFI candidates
+python scripts/02_enrich_images.py            # fetch missing creatives
+python scripts/03_ocr.py --backend easyocr --in-dir data/selected_input
+python scripts/04_curate.py --in-dir data/interim/ocr/easyocr --no-dedup
+python scripts/calibrate_dedup.py             # initial finance.jsonl needed
+python scripts/04_curate.py --in-dir data/interim/ocr/easyocr  # reviewed clustering
+python scripts/05_split.py                    # freeze leakage-checked splits
+python scripts/06_budget.py --targets-only    # targets, no model measurement
+python scripts/07_ablation.py                 # train/evaluate configured arms</code></pre>
+  <p>
+    Before OCR, prepare <code>data/selected_input/</code> with one complete
+    record per UID, using enriched API records in place of their discovery
+    versions alongside direct-archive and AMFI records. The directory reader
+    loads every JSONL and does not merge duplicate UIDs. Stage 02 is only
+    needed when Google discovery records exist.
+  </p>
+  <p>
+    OCR writes <code>data/interim/ocr/easyocr/records.jsonl</code>; explicitly
+    pass that directory to stage 04 or its default raw input will discard OCR.
+    An initial no-dedup curation creates <code>finance.jsonl</code> for
+    calibration. Calibration prints a suggestion without changing settings;
+    rerun curation with a reviewed <code>--image-threshold VALUE</code>.
+  </p>
+  <p>
+    The API collector needs <code>FACTCHECK_API_KEY</code> for its Google route.
+    The AMFI script writes <code>data/raw/amfi.jsonl</code> and
+    <code>data/images/amfi/</code>, filters filename patterns and small images,
+    resumes by UID and labels candidates <code>real</code>. Despite its
+    docstring mentioning SEBI, the implemented collector only visits AMFI.
+  </p>
+  <p>
+    Stage 01 uses configured request delays, caching and <code>robots.txt</code>.
+    Stage 01b uses a separate requests session and a 0.3-second sleep after
+    successful image downloads, without shared robots/rate-limit checks.
+    Its automatically assigned provenance-based labels require manual review.
+  </p>
 
-  <h3>curation</h3>
-  <table>
-    <thead><tr><th>File</th><th>Responsibility</th></tr></thead>
-    <tbody>
-      <tr><td><code>finance_filter.py</code></td><td>The weighted lexicon and negative lexicon, plus <code>DISCOVERY_QUERIES</code> — so the project's whole finance vocabulary sits in one file.</td></tr>
-      <tr><td><code>labels.py</code></td><td>Ordered verdict-string rules ("Mostly True" must be checked before generic false patterns), English and Devanagari, with a title-convention fallback for sources that emit no rating.</td></tr>
-      <tr><td><code>dedup.py</code></td><td>pHash / dHash / cHash, combined distance, union-find single-linkage clustering, and text-shingle Jaccard for creatives that differ visually but assert one claim. <code>pick_canonical</code> selects one representative per cluster deterministically.</td></tr>
-      <tr><td><code>splits.py</code></td><td>Group-aware stratified splitting with largest-remainder allocation (so small strata do not lose their val/test share to <code>floor()</code>), the leakage assertion, and manifest save/load.</td></tr>
-    </tbody>
-  </table>
-
-  <h3>utils</h3>
-  <table>
-    <thead><tr><th>File</th><th>Responsibility</th></tr></thead>
-    <tbody>
-      <tr><td><code>http.py</code></td><td>Rate limiting measured from the last request (so slow responses do not stack extra delay), retry with backoff honouring <code>Retry-After</code>, and disk caching that stores headers separately — WordPress returns pagination totals in <code>X-WP-TotalPages</code>, and losing that on a cache hit would break paging.</td></tr>
-      <tr><td><code>io.py</code></td><td>JSONL read/write, bad-line tolerance, <code>existing_uids()</code> — the basis of every resume.</td></tr>
-      <tr><td><code>logging_setup.py</code></td><td>One logging config; silences urllib3/PIL, which drown real output at DEBUG.</td></tr>
-    </tbody>
-  </table>
-
-  <h3>Scripts</h3>
-  <pre><code>python scripts/01_collect.py                 # harvest fact-check archives
-python scripts/02_enrich_images.py           # fetch creatives for API-found URLs
-python scripts/03_ocr.py --backend easyocr   # extract in-image text
-python scripts/calibrate_dedup.py            # tune duplicate threshold on real data
-python scripts/04_curate.py                  # filter, label, deduplicate
-python scripts/05_split.py                   # freeze leakage-free splits</code></pre>
+  <h3>Training artifacts</h3>
+  <pre><code>python -m pip install -e ".[model]"
+python scripts/07_ablation.py --arms fused --seeds 42 --epochs 1
+python scripts/07_ablation.py --image-only-claims</code></pre>
+  <p>
+    The one-epoch command is a debugging run. Training needs both classes and
+    non-empty train/validation splits from
+    <code>data/interim/finance.jsonl</code> and
+    <code>data/processed/split_manifest.json</code>. Outputs include
+    <code>data/checkpoints/&lt;arm&gt;_seed&lt;seed&gt;.pt</code> and per-run
+    history, manifest hash and aggregate reports in
+    <code>data/processed/ablation/</code>. Regenerate reviewed data and splits
+    before attempting a meaningful run.
+  </p>
 </section>
 
 <!-- ============================================================ -->
 <section id="testing">
-  <h2><span class="num">06</span>Testing</h2>
-  <p class="lede">172 assertions, no network, no load on anyone's servers.</p>
-
+  <h2><span class="num">08</span>Testing</h2>
+  <p class="lede">Four pipeline suites and offline Streamlit regressions; model performance must be evaluated separately.</p>
+  <pre><code>.\.venv\Scripts\python.exe tests/run_all.py
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\python.exe -m pytest tests/test_frontend.py -q</code></pre>
   <table>
-    <thead><tr><th>Suite</th><th class="num-col">Assertions</th><th>Covers</th></tr></thead>
+    <thead><tr><th>Suite</th><th>Coverage</th></tr></thead>
     <tbody>
-      <tr><td><code>unit/test_collection.py</code></td><td class="num-col">56</td><td>WordPress + article scraping, image extraction, filtering, labelling, persistence</td></tr>
-      <tr><td><code>unit/test_curation.py</code></td><td class="num-col">83</td><td>Perceptual hashing, clustering, splitting, OCR interface, transliteration</td></tr>
-      <tr><td><code>integration/test_stages.py</code></td><td class="num-col">33</td><td>The stage CLIs end to end, as a user invokes them</td></tr>
+      <tr><td><code>unit/test_collection.py</code></td><td>Source adapters, article/JSON-LD parsing, image discovery, finance filtering, labelling and persistence.</td></tr>
+      <tr><td><code>unit/test_curation.py</code></td><td>Perceptual hashes, clustering, split leakage checks, OCR result interfaces and transliteration.</td></tr>
+      <tr><td><code>unit/test_models.py</code></td><td>Architecture/config validation, budgets, metrics, threshold selection and example assembly without heavyweight model downloads.</td></tr>
+      <tr><td><code>integration/test_stages.py</code></td><td>Collection, enrichment, curation and split CLIs against the local mock server.</td></tr>
+      <tr><td><code>test_frontend.py</code></td><td>Streamlit AppTest: missing checkpoints, sample switching from another working directory, lazy initialization failure, and OCR failure with temporary-file cleanup. Model downloads are mocked.</td></tr>
     </tbody>
   </table>
-  <pre><code>python tests/run_all.py     # 172 passed, 0 failed</code></pre>
-
-  <h3>Method: a local mock, not the live sites</h3>
+  <p>Verified on 1 October 2026: <strong>265 pipeline assertions and four frontend tests passed</strong>. Six optional scikit-learn metric cross-checks were skipped in the frontend environment. Package compatibility checks and imports of Streamlit, torch, torchvision, Transformers and EasyOCR also passed.</p>
   <p>
-    <code>tests/fixtures/mock_server.py</code> replicates the real response
-    shapes — WordPress pagination with genuine <code>X-WP-Total</code> headers,
-    a sitemap with <code>&lt;lastmod&gt;</code>, article pages carrying real
-    ClaimReview and NewsArticle JSON-LD, and valid JPEG bytes. Field and header
-    names were verified against the live endpoints during the investigation, so
-    a scraper that passes here exercises the same code paths it will use in
-    production — without hammering small non-profit newsrooms during development,
-    and without tests that break whenever a site changes.
-  </p>
-
-  <h3>Fixtures are adversarial on purpose</h3>
-  <ul>
-    <li>A <code>srcset</code> where the correct answer is <em>not</em> the default <code>src</code></li>
-    <li>A lazy-loaded image with no <code>src</code> at all</li>
-    <li>A site logo and a verdict stamp that must both be excluded</li>
-    <li>A sidebar "related story" thumbnail that must not enter the record</li>
-    <li>A communal-riot article containing "crores" — the false-positive trap the negative lexicon exists to catch</li>
-    <li>Deliberately injected split leakage, to confirm the detector fires</li>
-  </ul>
-
-  <h3>Image tests use real transforms</h3>
-  <p>
-    Synthetic creatives are generated with PIL and then genuinely
-    re-compressed (JPEG q25), rescaled (50% and 2&times;), cropped and
-    brightened. The whole point of perceptual hashing is surviving exactly those
-    operations, so a mock would prove nothing.
+    <code>tests/fixtures/mock_server.py</code> serves WordPress pagination,
+    sitemaps, structured article data and valid image bytes locally. Synthetic
+    image tests apply real compression, resize, crop and brightness operations
+    to exercise perceptual hashing. Adversarial fixtures include lazy images,
+    misleading finance terms, annotations and deliberately injected leakage.
   </p>
   <p>
-    The assertion that matters is threshold-independent: <em>every true
-    duplicate must be closer than every distinct pair</em>. Absolute thresholds
-    are data-dependent and are calibrated separately.
+    Passing these suites validates repository logic against fixtures. It does
+    not establish OCR accuracy, current live-source accessibility, trained
+    model quality, or a lightweight deployment. The previous 172-assertion
+    documentation snapshot predates the model-utility suite and collection
+    fixes; use the current runner output when reporting verification.
   </p>
+</section>
 
-  <div class="callout">
-    <span class="tag">A test that found a real bug</span>
+<!-- ============================================================ -->
+<section id="evidence">
+  <h2><span class="num">09</span>Current evidence</h2>
+  <p class="lede">Local artifacts inspected on 1 October 2026; a fresh clone contains only data directory placeholders.</p>
+  <table>
+    <thead><tr><th>Artifact</th><th>Observed content</th></tr></thead>
+    <tbody>
+      <tr><td><code>data/interim/curation_report.json</code></td><td>100 input records; 79 finance-labelled records, all <code>fake</code>; 60 clusters. Four sources appear in this report; it is not a balanced training set.</td></tr>
+      <tr><td><code>data/processed/split_manifest.json</code></td><td>61 train / 9 validation / 9 test records; 60 clusters; seed 42; assignment hash <code>71ca28d778777ff1</code>.</td></tr>
+      <tr><td><code>test_samples/</code></td><td>11 tracked image files, with six configured frontend presets. No committed held-out membership/provenance manifest.</td></tr>
+      <tr><td>Checkpoints and evaluation reports</td><td>No trained model checkpoint or reproducible per-run performance report is tracked with the collaborator's changes.</td></tr>
+    </tbody>
+  </table>
+  <p>
+    An earlier README described an initial archive harvest of 1,208 records
+    yielding 100 usable candidates and 79 with images. The current local
+    curation report operates on a 100-record input and retains 79; these are
+    different pipeline snapshots, not a newly measured 1,208-record run.
+    Collected data, processed reports and checkpoints are gitignored, so this
+    local state does not transfer through <code>git pull</code>.
+  </p>
+  <div class="callout danger">
+    <span class="tag">Training status</span>
     <p>
-      The "distinct images are not merged" assertion failed during development:
-      two different creatives hashed 6 bits apart, under the threshold. Diagnosis
-      showed all collisions were same-template pairs — and since pHash and dHash
-      both operate on greyscale, they were blind to the colour differences that
-      distinguish them. That is what motivated adding cHash. The failure came
-      from a test, not from foresight.
+      Commit <code>ac3d7b3</code> says “train on real data”, but its tracked
+      changes provide frontend/collector/runtime code and sample images.
+      The checkpoint, evaluation dataset manifest and per-run metrics are
+      needed to verify that claim and any reported F1. The current local
+      report still contains a single class and cannot support binary training.
     </p>
   </div>
 </section>
 
 <!-- ============================================================ -->
 <section id="problems">
-  <h2><span class="num">07</span>Open problems</h2>
-  <p class="lede">The honest limitations. Both are better raised with the supervisor now than discovered in the final month.</p>
-
-  <div class="callout">
-    <span class="tag">Problem 1 &mdash; yield</span>
-    <p>
-      The archives may not contain enough finance items to train on. Alt News has
-      11 finance posts against 4,157 political ones. Run
-      <code>scripts/04_curate.py</code> and read the yield table before committing
-      to the current phasing.
-    </p>
-    <p>
-      <strong>If the count lands under ~500</strong>, the fact-check archives are
-      a <em>seed and evaluation set</em>, not a training set, and Telegram
-      collection has to move from Phase 3 up to Phase 1 — Telethon on public
-      channels is then the only route to training-scale data. This is a
-      scheduling risk, not a fatal one, but it needs deciding early.
-    </p>
-  </div>
+  <h2><span class="num">10</span>Open problems</h2>
+  <p class="lede">Work required before a reliable multimodal result can be reported.</p>
 
   <div class="callout danger">
-    <span class="tag">Problem 2 &mdash; class balance (the serious one)</span>
+    <span class="tag">Class balance and source shortcuts</span>
     <p>
-      <strong>Every record this pipeline produces is labelled <code>fake</code>.</strong>
-      Fact-checking archives exist to document falsehoods; nobody publishes an
-      article confirming that an ordinary legitimate advertisement is legitimate.
-      A binary classifier cannot be trained on one class. Stage 04 prints an
-      explicit warning when it detects this.
+      The local curated corpus has 79 <code>fake</code> records and no
+      <code>real</code> examples. AMFI collection is implemented, but its output
+      is absent from the inspected reports. Collect and review legitimate
+      creatives, rerun OCR/curation/splitting, and verify both classes occur in
+      usable training and evaluation examples.
     </p>
-    <p>Legitimate promotions must be sourced separately. Candidates:</p>
-    <ul>
-      <li><strong>SEBI-registered investment advisors' public posts</strong> — the registry of registered IAs and RAs is public, so the label is externally defensible</li>
-      <li><strong>AMFI "Mutual Funds Sahi Hai"</strong> campaign creatives</li>
-      <li><strong>Registered broker marketing</strong> — Zerodha, Groww, Upstox</li>
-      <li><strong>RBI / SEBI investor-education material</strong></li>
-      <li><strong>Legitimate financial news graphics</strong> — hard negatives that resemble the fake charts but are not fraudulent</li>
-    </ul>
     <p>
-      <strong>The critical constraint:</strong> negatives must be <em>the same
-      genre of image</em> — promotional finance graphics — differing only in
-      whether they deceive. A model trained on scam creatives versus random stock
-      photos will report 97% accuracy and will have learned to recognise a
-      screenshot, not a fraud. This is the highest-risk decision in the project,
-      and it matters more than the choice of image encoder or fusion mechanism.
+      AMFI branding and investor-education layouts differ from debunk archive
+      screenshots. A classifier may learn source or image style instead of
+      deceptive content. Add reviewed legitimate promotions and hard negatives
+      in comparable visual genres, and audit source distribution and duplicates.
     </p>
   </div>
+
+  <div class="callout">
+    <span class="tag">Text and image label leakage</span>
+    <p>
+      Configured training text includes OCR, archive claim text and article
+      title. Fact-check titles can explicitly name a scam; AMFI-generated
+      text explicitly describes official material. These fields can expose
+      labels and differ from the optional caption entered in the app.
+      Review/redact verdict wording and fact-check stamps, and define an
+      inference-compatible text input before interpreting model scores.
+    </p>
+  </div>
+
+  <h3>Fair ablation and the image-only-claim subset</h3>
+  <p>
+    <code>scripts/07_ablation.py</code> currently filters image availability
+    for image/fused arms while the text arm can retain additional records.
+    Compare arms on a common held-out population for a defensible delta.
+    The <code>image_only_claim</code> flag uses archive claim text as a caption
+    proxy; manually review the subset because original social captions are
+    generally unavailable. The text-only arm still includes OCR; a
+    caption-only baseline is needed to isolate the benefit of in-image text.
+  </p>
+
+  <h3>Yield and generalization</h3>
+  <p>
+    The inspected 79-record corpus and nine-record test split are too small to
+    support strong generalization claims. More reviewed, diverse data is
+    needed. Public-channel Telegram collection remains proposed; choose any
+    expanded source strategy with the supervisor and preserve provenance,
+    image hygiene and group-aware splits.
+  </p>
+
+  <h3>Missing artifacts and runtime validation</h3>
+  <p>
+    Obtain the collaborator's checkpoint with its matching configuration,
+    split manifest and evaluation reports, or run reproducible training after
+    data review. Verify tensor paths, OCR, threshold behavior and sample
+    predictions with those artifacts. Merely starting Streamlit cannot
+    establish model performance.
+  </p>
+</section>
+
+<!-- ============================================================ -->
+<section id="budget">
+  <h2><span class="num">11</span>Lightweight budget</h2>
+  <p class="lede">Targets in <code>configs/model.yaml</code>; no achieved deployment measurements are tracked.</p>
+  <table>
+    <thead><tr><th>Metric</th><th>Target for compressed student</th></tr></thead>
+    <tbody>
+      <tr><td>Parameters</td><td>&le; 50 million</td></tr>
+      <tr><td>Serialized model size</td><td>&le; 100 MB</td></tr>
+      <tr><td>CPU latency p50 / p95</td><td>&le; 100 / 250 ms</td></tr>
+      <tr><td>Peak RAM</td><td>&le; 1,024 MB</td></tr>
+      <tr><td>Macro-F1 retention</td><td>&ge; 0.95 &times; teacher</td></tr>
+    </tbody>
+  </table>
+  <p>
+    The RAM figure is a project budget, not a guaranteed Streamlit hosting
+    allowance. The configured student is not a distilled or INT8-exported
+    artifact and may require further compression to reach these ceilings.
+    Hosting feasibility needs separate verification for the chosen service.
+  </p>
+  <pre><code>python scripts/06_budget.py --targets-only
+python scripts/06_budget.py --arm fused --variant student --from-scratch</code></pre>
+  <p>
+    The first command prints targets without measurements. The second requires
+    model dependencies and times a randomly initialized architecture without
+    pretrained weight downloads, though uncached encoder configuration files
+    can still require network access. Reference conditions are batch 1, four CPU threads,
+    224&times;224 images, 128 text tokens, 10 warm-ups and 100 timed runs; the
+    configured reference machine is an Intel Core 7 150U with 24 GB RAM.
+  </p>
+  <p>
+    The measurement CLI uses normal PyTorch weights and FP32 serialization by
+    default. The configuration's <code>precision: int8</code> label does not
+    perform quantization. Report actual execution precision, hardware and
+    checkpoint provenance; supply evaluated student/teacher F1 for the
+    retention row. The frontend's OCR-inclusive timer is a separate measurement.
+  </p>
 </section>
 
 <!-- ============================================================ -->
 <section id="roadmap">
-  <h2><span class="num">08</span>Roadmap</h2>
-  <p class="lede">Full detail with effort estimates in <code>docs/CHECKLIST.md</code>.</p>
-
+  <h2><span class="num">12</span>Roadmap</h2>
+  <p class="lede">Implementation status separated from trained or evaluated results.</p>
   <table>
-    <thead><tr><th>Phase</th><th>Work</th><th>Status</th></tr></thead>
+    <thead><tr><th>Work</th><th>Status</th><th>Next evidence needed</th></tr></thead>
     <tbody>
-      <tr><td><strong>0</strong></td><td>API key, first collection, yield gate, negative-class decision</td><td><span class="status-dot now"></span>In progress</td></tr>
-      <tr><td><strong>1</strong></td><td>Collection pipeline, finance filter, labelling</td><td><span class="status-dot done"></span>Complete</td></tr>
-      <tr><td><strong>1.3</strong></td><td>Near-duplicate detection, group-aware splits</td><td><span class="status-dot done"></span>Complete</td></tr>
-      <tr><td><strong>1.5</strong></td><td>Negative-class collection</td><td><span class="status-dot todo"></span>Blocked on Gate 2</td></tr>
-      <tr><td><strong>1.6</strong></td><td>OCR module</td><td><span class="status-dot done"></span>Built, awaiting real images</td></tr>
-      <tr><td><strong>1.7</strong></td><td>Label Studio verification pass</td><td><span class="status-dot todo"></span>Pending</td></tr>
-      <tr><td><strong>2</strong></td><td>MuRIL + ViT/CLIP, cross-attention fusion, ablation</td><td><span class="status-dot todo"></span>Pending</td></tr>
-      <tr><td><strong>2.5</strong></td><td>Fin-Fact / Fakeddit benchmarking</td><td><span class="status-dot todo"></span>Pending</td></tr>
-      <tr><td><strong>3</strong></td><td>Telethon collection, forwarding graph, GNN branch</td><td><span class="status-dot todo"></span>Pending</td></tr>
-      <tr><td><strong>4</strong></td><td>Distillation, ONNX, FastAPI + Streamlit demo</td><td><span class="status-dot todo"></span>Pending</td></tr>
+      <tr><td>Archive collection, curation and deduplication</td><td><span class="status-dot done"></span>Implemented; local collection exists</td><td>Expanded reviewed corpus and current source yield.</td></tr>
+      <tr><td>Group-aware splits and OCR</td><td><span class="status-dot done"></span>Implemented</td><td>Manual annotation audit, OCR-quality checks and regenerated balanced manifest.</td></tr>
+      <tr><td>Legitimate class collection</td><td><span class="status-dot now"></span>AMFI collector added</td><td>Reviewed real-class examples integrated into data and splits.</td></tr>
+      <tr><td>Model arms, fusion and training</td><td><span class="status-dot now"></span>Code implemented; training unverified</td><td>Matching checkpoints, multiple-seed reports, common test population and reviewed image-only-claim subset.</td></tr>
+      <tr><td>Streamlit frontend</td><td><span class="status-dot done"></span>Implemented; preview runs without checkpoint</td><td>Trained checkpoint for OCR/model analysis and prediction validation.</td></tr>
+      <tr><td>External dataset benchmarking</td><td><span class="status-dot todo"></span>Planned</td><td>Documented dataset and evaluation protocol.</td></tr>
+      <tr><td>Telegram graph / GNN</td><td><span class="status-dot todo"></span>Planned</td><td>Collection/provenance design and propagation branch implementation.</td></tr>
+      <tr><td>Distillation, INT8/ONNX and API serving</td><td><span class="status-dot todo"></span>Planned</td><td>Exported artifact, measured budget and accuracy retention.</td></tr>
     </tbody>
   </table>
-
-  <h3>Things to get right in Phase 2</h3>
-  <ul>
-    <li><strong>Build the ablation arms first.</strong> Text-only and image-only baselines are the deliverable the supervisor asked for, not an appendix — and they give a working number early.</li>
-    <li><strong>Report precision, recall, F1 and PR-AUC, not accuracy.</strong> Accuracy is close to meaningless on imbalanced fraud data.</li>
-    <li><strong>Run the targeted experiment.</strong> Build an evaluation subset where the caption is benign and the claim is image-only. If fusion does not beat text-only <em>there</em>, the central thesis is not demonstrated regardless of overall F1. This is the most convincing single experiment available.</li>
-    <li><strong>Define "lightweight" as a number</strong> before building — model size, CPU latency, parameter count — so Phase 4 measures against a commitment rather than reverse-justifying a result.</li>
-    <li><strong>3&ndash;5 seeds per arm</strong>, reporting mean &plusmn; std. A 1% gain on one seed is noise.</li>
-  </ul>
+  <p>
+    Report precision, recall, F1, macro-F1 and PR-AUC with class counts, the
+    manifest hash and mean &plusmn; standard deviation across seeds. The
+    image-carried-claim subset directly tests the project's premise.
+    <code>docs/CHECKLIST.md</code> retains the earlier detailed planning record;
+    this page and the README describe current implementation status.
+  </p>
 </section>
 
 <!-- ============================================================ -->
 <section id="log">
-  <h2><span class="num">09</span>Change log</h2>
-  <p class="lede">This document is maintained as the project progresses.</p>
+  <h2><span class="num">13</span>Change log</h2>
+  <p class="lede">Updated against repository code on 1 October 2026.</p>
 
   <div class="card">
-    <h3>v0.2 &mdash; Restructure and risk modules</h3>
+    <h3>1 October 2026 &mdash; Frontend setup and documentation refresh</h3>
     <ul>
-      <li>Reorganised into an installable package (<code>src/fipd/</code>) layered by pipeline stage; <code>pyproject.toml</code> with per-phase optional extras; scripts renumbered by stage</li>
-      <li>Added near-duplicate detection: pHash, dHash, cHash, combined distance, union-find clustering, text-shingle merging</li>
-      <li>Added group-aware stratified splitting with a hard leakage assertion and a committed manifest</li>
-      <li>Added the OCR stage: three pluggable backends, disk cache, quality gate, annotation skipping</li>
-      <li>Added transliteration and text-input assembly for code-mixed Hindi/English</li>
-      <li>Added <code>calibrate_dedup.py</code> — estimates the duplicate threshold from the real corpus rather than hardcoding a synthetic one</li>
-      <li>Test suite grown from 56 to 172 assertions, now including integration coverage of the stage CLIs</li>
-      <li>This HTML document replaces <code>docs/PHASE1_WALKTHROUGH.md</code></li>
+      <li>Added a focused <code>frontend</code> extra and <code>requirements-frontend.txt</code>, with direct Windows virtual-environment commands.</li>
+      <li>Made uploads/sample previews available without a checkpoint, delayed model initialization until analysis, and disabled inference when trained weights are absent.</li>
+      <li>Replaced hardcoded model-performance/test-split claims with artifact-aware status and architecture details from configuration; improved text separation, OCR error handling and temporary-file cleanup.</li>
+      <li>Documented local single-class data, checkpoint requirements, training outputs, source/text leakage risks and unmeasured deployment targets.</li>
     </ul>
   </div>
 
   <div class="card">
-    <h3>v0.1 &mdash; Collection pipeline</h3>
+    <h3>27 September 2026 &mdash; Collaborator commit <a href="https://github.com/dishitabuilds/multimodal-fip-detection/commit/ac3d7b36d09b86831efe2b2fbfe3b135223f3dd4"><code>ac3d7b3</code></a></h3>
+    <p><code>veerbhadrasinh-8</code>: “added frontned improved and train on real data”.</p>
     <ul>
-      <li>Source investigation across five Indian fact-checkers; BOOM identified as primary</li>
-      <li>Three scraper backends: WordPress REST, sitemap + ClaimReview, Google Fact Check API</li>
-      <li>Weighted-lexicon finance filter with negative lexicon; verdict&rarr;label mapper</li>
-      <li>Offline mock-server test harness, 56 assertions</li>
-      <li>Publisher-sweep support added to the Google API scraper</li>
+      <li>Added <code>app.py</code> and 11 images in <code>test_samples/</code>.</li>
+      <li>Added the AMFI legitimate-creative collector, <code>scripts/01b_collect_legitimate.py</code>.</li>
+      <li>Moved <code>ExampleDataset</code> to module scope for multiprocessing pickling and changed configured <code>num_workers</code> from two to zero.</li>
+      <li>Added EasyOCR's explicit/local/default model-storage lookup.</li>
+      <li>No model checkpoint or reproducible training/evaluation report was included; dropout and <code>drop_last=False</code> were unchanged.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>Earlier collection fixes and model scaffolding</h3>
+    <ul>
+      <li>Defined the numeric lightweight budget and implemented configurable encoders, fusion arms, metrics, training and ablation CLIs.</li>
+      <li>Added robots handling and archive fallback routes; improved verdict extraction from live-page conventions.</li>
+      <li>Fixed the normalized image-distance threshold and suppressed ubiquitous publisher graphics that previously merged the corpus into one cluster.</li>
+      <li>Recorded initial real-data collection and the need for a legitimate class before binary training.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>v0.2 &mdash; Installable pipeline and risk modules</h3>
+    <ul>
+      <li>Layered <code>src/fipd/</code> package, optional extras and numbered stage CLIs.</li>
+      <li>pHash/dHash/cHash, text-shingle clustering, group-aware leakage-checked splits and calibration tool.</li>
+      <li>Three OCR backends, caching, quality checks, annotation skipping and code-mixed text assembly.</li>
+      <li>Local mock-server integration coverage; this HTML document replaces the earlier Phase 1 walkthrough.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>v0.1 &mdash; Initial collection pipeline</h3>
+    <ul>
+      <li>Historical source investigation across five fact-checkers.</li>
+      <li>WordPress, sitemap/ClaimReview and Google Fact Check API adapters.</li>
+      <li>Weighted finance relevance, verdict mapping and offline fixtures.</li>
     </ul>
   </div>
 </section>
@@ -765,12 +990,12 @@ python scripts/05_split.py                   # freeze leakage-free splits</code>
 <footer>
   <p>
     Minor Project &middot; supervisor Dr.&nbsp;Shivangi Surati &middot;
-    Phase&nbsp;1 complete, 46 files, 4,663 lines of Python, 172 tests passing.
+    Updated 1 October 2026 against repository code and available local reports.
   </p>
   <p class="small">
-    Companion documents: <code>docs/PHASE0_GUIDE.md</code> (step-by-step for the
-    current phase) and <code>docs/CHECKLIST.md</code> (full roadmap with effort
-    estimates and a risk register).
+    Use <a href="README.md">README.md</a> for current setup commands.
+    <code>docs/PHASE0_GUIDE.md</code> and <code>docs/CHECKLIST.md</code> retain
+    earlier planning and may reference superseded file names.
   </p>
 </footer>
 

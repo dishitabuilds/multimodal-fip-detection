@@ -1,0 +1,3 @@
+# Optional audio/video support alongside the existing Streamlit frontend.
+-r requirements-frontend.txt
+-e .[lab,media]

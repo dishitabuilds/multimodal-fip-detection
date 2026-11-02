@@ -1,0 +1,18 @@
+# Classical ML lab track. OCR/captions only: archive titles never enter features.
+text:
+  fields: [ocr_text, claim_text]
+  separator: " [SEP] "
+  max_chars: 4000
+  lowercase: false
+  transliterate: false
+
+arms: [text_only, image_only, fused]
+models: [linear_svm, logistic_regression, naive_bayes]
+# Naive Bayes is evaluated on nonnegative text features only.
+regularization: [0.1, 1.0, 10.0]
+nb_alpha: [0.1, 1.0, 10.0]
+max_features: 10000
+seed: 42
+batch_size: 16
+threads: 4
+benchmark_runs: 20

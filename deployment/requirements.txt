@@ -1,0 +1,12 @@
+# Community Cloud reads this file beside deployment/streamlit_app.py.
+# CPU wheels avoid installing CUDA libraries on the free Linux host.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.1+cpu; sys_platform == "linux" and platform_machine == "x86_64"
+torchvision==0.29.1+cpu; sys_platform == "linux" and platform_machine == "x86_64"
+streamlit==1.64.0
+easyocr==1.7.2
+transformers==4.57.6
+faster-whisper==1.2.1
+av==16.1.0
+scikit-learn==1.9.1
+-e .[frontend,lab,media]

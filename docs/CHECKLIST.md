@@ -1,5 +1,9 @@
 # Project Checklist
 
+> Historical planning document. Use [REMAINING_WORK.md](REMAINING_WORK.md) for
+> current implementation status and [PILOT_RUN.md](PILOT_RUN.md) for the internal
+> 25 October 2026 end-to-end pilot and its limitations.
+
 **A Lightweight Multimodal Model for Detecting Fake Investment Promotions**
 
 Ordered by dependency — items near the top unblock items below them. Estimates

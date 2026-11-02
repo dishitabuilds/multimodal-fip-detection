@@ -1,0 +1,55 @@
+# OPT-IN PLUMBING SMOKE ONLY: random initialisation, no pretrained knowledge.
+# Prepare assets: python scripts/09_tiny_smoke.py
+# Prepare and train with the CPU thread cap (normal data gates still apply):
+# python scripts/09_tiny_smoke.py --run-ablation -- --records ... --manifest ...
+# Results are not final accuracy or teacher-retention evidence.
+
+purpose: internal_smoke_only
+
+budget:
+  max_params_m: 50.0
+  max_disk_mb: 100.0
+  max_latency_p50_ms: 100.0
+  max_latency_p95_ms: 250.0
+  max_peak_ram_mb: 1024.0
+  min_f1_retention: 0.95
+
+measurement:
+  batch_size: 1
+  threads: 4
+  image_size: 224
+  max_text_tokens: 256  # bytes, rather than multilingual subword tokens
+  warmup_runs: 2
+  timed_runs: 10
+  precision: fp32
+  reference_machine: "internal local CPU plumbing smoke; record actual host separately"
+
+model:
+  student:
+    text_encoder: data/models/tiny-smoke/text
+    image_encoder: data/models/tiny-smoke/image
+    hidden_dim: 128
+    fusion: cross_attention
+    fusion_heads: 4
+    fusion_layers: 1
+    dropout: 0.1
+  arms: [text_only, image_only, fused]
+
+text:
+  fields: [ocr_text, claim_text, title]
+  separator: " [SEP] "
+  max_chars: 2000
+  lowercase: false
+  transliterate: true
+
+training:
+  seeds: [42]  # smoke ONLY; configs/model.yaml keeps the normal research seeds
+  epochs: 1
+  batch_size: 4
+  lr: 0.001
+  head_lr: 0.001
+  mixed_precision: false
+  num_workers: 0
+
+evaluation:
+  decision_threshold: 0.5

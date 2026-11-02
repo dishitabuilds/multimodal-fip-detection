@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import re
 from typing import Iterator
+from urllib.parse import urljoin
 from xml.etree import ElementTree as ET
 
 from bs4 import BeautifulSoup
@@ -140,23 +141,41 @@ class ArticleScraper(BaseScraper):
             soup.title.get_text(strip=True) if soup.title else ""
         )
 
-        # Narrow to the article body before pulling images, so we don't hoover
-        # up "related stories" thumbnails from the sidebar.
+        # A page can place sidebar <article> cards before the actual story.
+        # Prefer its body container before a generic article tag; otherwise
+        # every Factly record can acquire the same unrelated sidebar image.
         body_node = None
+        body_scope = "fallback"
         if self.article_selector:
             body_node = soup.select_one(self.article_selector)
+            if body_node is not None:
+                body_scope = self.article_selector
         if body_node is None:
-            body_node = soup.find("article") or soup.find(
-                attrs={"class": re.compile(r"(story|article|post)[-_]?(body|content|detail)", re.I)}
-            )
+            for selector in ("[itemprop='articleBody']", ".article-body", ".post-article-content", ".entry-content",
+                             ".post-content", ".story-body", ".story-content",
+                             ".article-content", ".post-body"):
+                body_node = soup.select_one(selector)
+                if body_node is not None:
+                    body_scope = selector
+                    break
+        if body_node is None:
+            articles = soup.find_all("article")
+            # Main-story articles normally contain substantially more text
+            # than teaser cards. This is a fallback, recorded for later review.
+            body_node = max(articles, key=lambda node: len(node.get_text(" ", strip=True))) \
+                if articles else None
+            if body_node is not None:
+                body_scope = "article-longest-text"
         body_html = str(body_node) if body_node else str(soup.find("body") or soup)
 
         images = self.extract_images(body_html, page_url=url)
-        hero = og("og:image")
+        hero = urljoin(url, og("og:image")) if og("og:image") else ""
         if hero and not any(a.url == hero for a in images):
             from ..schema.records import ImageAsset
 
-            images.insert(0, ImageAsset(url=hero, role="creative", alt_text=title))
+            # OG images are commonly verdict-stamped editorial composites.
+            # Keep the source asset for review without asserting it is creative.
+            images.insert(0, ImageAsset(url=hero, role="unknown", alt_text=title))
 
         slug = url.rstrip("/").split("/")[-1]
 
@@ -172,7 +191,10 @@ class ArticleScraper(BaseScraper):
             verdict_raw=cr.get("verdict", ""),
             images=images,
             categories=[p for p in url.replace(self.base_url, "").split("/") if p][:-1],
-            raw={"lastmod": lastmod, "claimreview": cr or None},
+            raw={"lastmod": lastmod, "claimreview": cr or None,
+                 "image_extraction": {"body_scope": body_scope,
+                                      "og_image": hero or None,
+                                      "review_required": True}},
         )
 
     # ------------------------------------------------------------------

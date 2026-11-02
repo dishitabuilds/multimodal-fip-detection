@@ -34,7 +34,7 @@ from fipd.curation.dedup import (  # noqa: E402
     pick_canonical,
 )
 from fipd.curation.finance_filter import score_record  # noqa: E402
-from fipd.curation.labels import assign_label  # noqa: E402
+from fipd.curation.labels import assign_label, manual_review_decision  # noqa: E402
 from fipd.schema.records import LABEL_UNKNOWN  # noqa: E402
 from fipd.utils.io import read_all, write_json, write_records  # noqa: E402
 from fipd.utils.logging_setup import banner, setup  # noqa: E402
@@ -80,7 +80,8 @@ def main() -> int:
     per_source: dict[str, Counter] = defaultdict(Counter)
     for rec in records:
         fv = score_record(rec, threshold=args.threshold)
-        rec.is_finance = fv.is_finance
+        reviewed = manual_review_decision(rec)
+        rec.is_finance = reviewed["task_relevant"] if reviewed else fv.is_finance
         rec.finance_score = fv.score
         rec.finance_hits = fv.hits
         rec.label = assign_label(rec)
@@ -90,6 +91,8 @@ def main() -> int:
         c["finance"] += rec.is_finance
         c["labelled"] += rec.label != LABEL_UNKNOWN
         c["with_image"] += any(a.local_path for a in rec.images)
+        c["manual_reviewed"] += bool(reviewed)
+        c["automatic_finance"] += fv.is_finance
 
     finance = [r for r in records
                if r.is_finance and r.label != LABEL_UNKNOWN

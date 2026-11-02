@@ -1,449 +1,307 @@
-"""Clean, Executive-Grade Interface for Multimodal Fake Investment Promotion Detection.
+"""Promotion Lens: a local image/text research workbench.
 
-College Minor Project — Supervisor: Dr. Shivangi Surati
-Model: Multimodal Cross-Attention Fusion (DistilBERT Multilingual + ViT-Small)
+Preview and OCR are independent of classifier checkpoints. Model inference is
+explicitly selected, and the internal pilot is always labelled as unvalidated.
 """
-
 from __future__ import annotations
 
-import os
-import re
-import tempfile
-import time
+from html import escape
+import io
+import json
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 import streamlit as st
-import torch
 
-from fipd.enrichment.ocr import EasyOCREngine
-from fipd.models.arms import build_arm
-from fipd.models.config import load_model_config
+from fipd.frontend import analysis as analysis_service
+from fipd.frontend.styles import CSS, empty_state_html, header_html
 
-# Page configuration
-st.set_page_config(
-    page_title="Investment Promotion Verification",
-    page_icon="⚖️",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
-# Professional Executive Styling
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-
-    html, body, [class*="css"] {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    }
-
-    /* Minimalist Top App Bar */
-    .brand-bar {
-        display: flex;
-        align-items: baseline;
-        justify-content: space-between;
-        border-bottom: 1px solid rgba(128, 128, 128, 0.2);
-        padding-bottom: 12px;
-        margin-bottom: 24px;
-    }
-    .brand-title {
-        font-size: 1.3rem;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-    }
-    .brand-meta {
-        font-size: 0.8rem;
-        color: #888888;
-    }
-
-    /* Executive Verdict Hero Card */
-    .hero-verdict {
-        border-radius: 10px;
-        padding: 24px;
-        margin-bottom: 20px;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-    }
-    .hero-verdict-fake {
-        background: rgba(239, 68, 68, 0.12);
-        border: 2px solid rgba(239, 68, 68, 0.5);
-    }
-    .hero-verdict-real {
-        background: rgba(34, 197, 94, 0.12);
-        border: 2px solid rgba(34, 197, 94, 0.5);
-    }
-    .verdict-status {
-        font-size: 0.8rem;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-    }
-    .verdict-status-fake { color: #ef4444; }
-    .verdict-status-real { color: #22c55e; }
-    
-    .verdict-main {
-        font-size: 1.8rem;
-        font-weight: 800;
-        letter-spacing: -0.03em;
-        line-height: 1.1;
-    }
-    .verdict-main-fake { color: #f87171; }
-    .verdict-main-real { color: #4ade80; }
-
-    .verdict-explanation {
-        font-size: 0.95rem;
-        color: #d1d5db;
-        line-height: 1.4;
-        margin-top: 4px;
-    }
-
-    /* Clean Metric Strip */
-    .metric-strip {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 12px;
-        background: rgba(128, 128, 128, 0.08);
-        border: 1px solid rgba(128, 128, 128, 0.15);
-        border-radius: 8px;
-        padding: 14px 18px;
-        margin-bottom: 20px;
-    }
-    .metric-cell {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-    }
-    .metric-cell-label {
-        font-size: 0.72rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        color: #9ca3af;
-    }
-    .metric-cell-val {
-        font-size: 1.4rem;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-    }
-
-    /* Tags */
-    .flag-tag {
-        display: inline-block;
-        padding: 4px 10px;
-        border-radius: 6px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        margin: 0 6px 6px 0;
-    }
-    .flag-danger {
-        background: rgba(239, 68, 68, 0.18);
-        color: #fca5a5;
-        border: 1px solid rgba(239, 68, 68, 0.35);
-    }
-    .flag-warning {
-        background: rgba(245, 158, 11, 0.18);
-        color: #fde68a;
-        border: 1px solid rgba(245, 158, 11, 0.35);
-    }
-    .flag-success {
-        background: rgba(34, 197, 94, 0.18);
-        color: #86efac;
-        border: 1px solid rgba(34, 197, 94, 0.35);
-    }
-
-    /* Collapsible clean OCR terminal */
-    .ocr-preview-box {
-        background: rgba(0, 0, 0, 0.25);
-        border: 1px solid rgba(128, 128, 128, 0.2);
-        border-radius: 6px;
-        padding: 12px;
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 0.8rem;
-        line-height: 1.5;
-        color: #e5e7eb;
-        max-height: 160px;
-        overflow-y: auto;
-    }
-
-    /* Empty state */
-    .empty-prompt {
-        border: 1px dashed rgba(128, 128, 128, 0.25);
-        border-radius: 10px;
-        padding: 56px 20px;
-        text-align: center;
-        color: #9ca3af;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# Top Bar
-st.markdown("""
-<div class="brand-bar">
-    <div class="brand-title">Multimodal Investment Promotion Verification</div>
-    <div class="brand-meta">College Minor Project • Supervisor: Dr. Shivangi Surati</div>
-</div>
-""", unsafe_allow_html=True)
-
-
-# Pre-indexed Test Samples
+ROOT = Path(__file__).resolve().parent
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_IMAGE_PIXELS = 12_000_000
+MODE_LABELS = {"Extract text": "ocr", "Pilot demo": "pilot", "Research model": "research"}
 SAMPLES = {
-    "Adani Deepfake Scam": {
-        "path": "test_samples/sample_fake_1.png",
-        "caption": "Viral post impersonating Gautam Adani claiming government-backed project and ₹1.6M return.",
-        "type": "fake",
+    "sample_public_figure": {
+        "title": "Social feed promotion", "file": "sample_fake_1.png",
+        "context": "Bundled social-feed screenshot; source and outcome are not verified by this demo.",
     },
-    "PM Modi Guaranteed Returns": {
-        "path": "test_samples/sample_fake_3.png",
-        "caption": "Invest ₹21,500 today and receive ₹1,600,000 instantly. Fabricated video claim.",
-        "type": "fake",
+    "sample_news_page": {
+        "title": "News-style promotion", "file": "sample_fake_2.png",
+        "context": "Bundled article-style screenshot; publisher styling is not verification.",
     },
-    "Times of India Clone": {
-        "path": "test_samples/sample_fake_2.png",
-        "caption": "Fabricated news article claiming automated trading platform endorsed by FM Sitharaman.",
-        "type": "fake",
+    "sample_fund_comparison": {
+        "title": "Scheme comparison graphic", "file": "sample_real_with_text_1.webp",
+        "context": "AMFI-branded educational material; demonstration asset, not a held-out test result.",
     },
-    "AMFI Scheme Comparison": {
-        "path": "test_samples/sample_real_with_text_1.webp",
-        "caption": "Official AMFI Investor Education: How should one compare the performance of any two schemes.",
-        "type": "real",
-    },
-    "AMFI Goal Planning": {
-        "path": "test_samples/sample_real_with_text_2.webp",
-        "caption": "Official AMFI Investor Education: Can Mutual Funds help you achieve your dreams.",
-        "type": "real",
-    },
-    "AMFI Nominee Process": {
-        "path": "test_samples/sample_real_with_text_3.webp",
-        "caption": "Official AMFI Investor Education: Why is nomination important in mutual funds.",
-        "type": "real",
+    "sample_goal_planning": {
+        "title": "Goal planning graphic", "file": "sample_real_with_text_2.webp",
+        "context": "AMFI-branded educational material; demonstration asset, not a held-out test result.",
     },
 }
 
-# Sidebar
-with st.sidebar:
-    st.markdown("**TEST DATASET SAMPLES**")
-    st.caption("Click to test verified samples from the test split:")
-
-    for name, meta in SAMPLES.items():
-        prefix = "🔴 Scam:" if meta["type"] == "fake" else "🟢 Real:"
-        if st.button(f"{prefix} {name}", key=f"btn_{name}", use_container_width=True):
-            st.session_state["preset_image_path"] = meta["path"]
-            st.session_state["preset_caption"] = meta["caption"]
-            st.session_state["preset_name"] = name
-
-    st.markdown("---")
-    st.markdown("**SYSTEM ARCHITECTURE**")
-    st.markdown("""
-    - **Fusion:** Cross-Attention (4 Heads)
-    - **Language:** Multilingual DistilBERT
-    - **Vision:** Vision Transformer (`vit-small`)
-    - **Inference Budget:** ≤ 100 ms on CPU
-    - **Test Macro-F1:** 1.000
-    """)
+st.set_page_config(page_title="Promotion Lens", layout="wide", initial_sidebar_state="auto")
+st.markdown(f"<style>{CSS}</style>", unsafe_allow_html=True)
 
 
-# Model Loader
+def clear_result():
+    st.session_state.pop("analysis_result", None)
+    st.session_state.pop("analysis_identity", None)
+
+
+def open_samples():
+    st.session_state.input_source = "Sample gallery"
+    clear_result()
+
+
+def select_sample(key):
+    st.session_state.selected_sample = key
+    st.session_state.caption_input = ""
+    clear_result()
+
+
+def reset_input():
+    st.session_state.upload_revision = st.session_state.get("upload_revision", 0) + 1
+    st.session_state.input_source = "Upload"
+    st.session_state.selected_sample = None
+    st.session_state.caption_input = ""
+    clear_result()
+
+
+def stamp(path):
+    if not path:
+        return None
+    try:
+        stat = Path(path).stat()
+        return stat.st_mtime_ns, stat.st_size
+    except OSError:
+        return None
+
+
 @st.cache_resource(show_spinner=False)
-def load_components():
-    cfg = load_model_config()
-    arch = cfg.student
+def cached_ocr(root):
+    return analysis_service.load_ocr(Path(root))
 
-    model = build_arm("fused", arch)
-    ckpt_path = Path("data/checkpoints/fused_seed42.pt")
-    if ckpt_path.exists():
-        ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-        model.load_state_dict(ckpt["state_dict"])
-        threshold = ckpt.get("threshold", 0.49)
+
+@st.cache_resource(show_spinner=False)
+def cached_classifier(root, mode, checkpoint_stamp, config_stamp):
+    return analysis_service.load_classifier(Path(root), mode)
+
+
+def decode_image(data):
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise ValueError("Choose an image smaller than 10 MB.")
+    with Image.open(io.BytesIO(data)) as source:
+        if source.width * source.height > MAX_IMAGE_PIXELS:
+            raise ValueError("Choose an image with at most 12 million pixels.")
+        if source.format not in {"PNG", "JPEG", "WEBP"}:
+            raise ValueError("Choose a PNG, JPG or WebP image.")
+        return analysis_service.canonical_image(source)
+
+
+def render_result(result):
+    error = result.get("error")
+    if error:
+        st.error(error["message"])
+        if error.get("details"):
+            st.caption(error["details"])
     else:
-        threshold = 0.49
-    model.eval()
+        st.markdown('<span class="status-pill ready">Analysis complete</span>', unsafe_allow_html=True)
 
-    ocr = EasyOCREngine(languages=["en", "hi"])
-    ocr.load()
+    if result["mode"] == "pilot":
+        st.warning("Unvalidated pilot output. This model uses a 14-image provisional dataset "
+                   "for an internal pipeline demonstration. Its scores do not establish accuracy.")
+    for warning in result.get("warnings", []):
+        # The permanent pilot notice above carries the full limitation.
+        if not (result["mode"] == "pilot" and "pilot" in warning.lower()):
+            st.info(warning)
 
-    from torchvision import transforms
-    from transformers import AutoTokenizer
+    scores = result.get("class_scores")
+    if scores:
+        st.markdown('<h3 class="result-heading">Model output</h3>', unsafe_allow_html=True)
+        label = "Fake" if result["label"] == "fake" else "Real"
+        st.write(f"Assigned class: **{label}**")
+        st.caption("Class names describe the model's training labels. "
+                   "They are not an assessment of investment safety or regulatory approval.")
+        st.markdown(
+            '<div class="score-strip">'
+            f'<div class="score-item"><div class="score-label">Fake class score</div>'
+            f'<div class="score-value">{scores["fake"]:.1%}</div></div>'
+            f'<div class="score-item"><div class="score-label">Real class score</div>'
+            f'<div class="score-value">{scores["real"]:.1%}</div></div>'
+            f'<div class="score-item"><div class="score-label">Decision threshold</div>'
+            f'<div class="score-value">{result["threshold"]:.2f}</div></div></div>',
+            unsafe_allow_html=True,
+        )
+    elif not error:
+        st.markdown('<h3 class="result-heading">Text, ready to inspect</h3>', unsafe_allow_html=True)
+        st.caption("Text extraction mode does not assign a fake or real label.")
 
-    tokenizer = AutoTokenizer.from_pretrained(arch.text_encoder)
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
-    ])
-
-    return model, ocr, tokenizer, transform, threshold
-
-
-try:
-    with st.spinner("Initializing models..."):
-        model, ocr_engine, tokenizer, img_transform, decision_threshold = load_components()
-    models_ready = True
-except Exception as e:
-    st.error(f"Initialization error: {e}")
-    models_ready = False
-
-
-# Heuristic rule checks
-def evaluate_indicators(text: str) -> list[tuple[str, str]]:
-    indicators = []
-    text_lower = text.lower()
-    
-    if re.search(r"(guarantee|guaranteed|100%|sure shot|risk free|zero risk)", text_lower):
-        indicators.append(("Guaranteed High Return Promise", "danger"))
-    if re.search(r"(₹\s*[\d,]+|\brs\.?\s*[\d,]+|\bmonthly\b|\bper day\b)", text_lower):
-        indicators.append(("Explicit Profit / Payout Claim", "danger"))
-    if re.search(r"(vip|telegram|whatsapp group|dm for link|join now)", text_lower):
-        indicators.append(("Unregulated Channel Referral", "danger"))
-    if re.search(r"(government of india|sebi approved|pm modi|nirmala|adani)", text_lower):
-        indicators.append(("Public Figure / Authority Citation", "warning"))
-    if re.search(r"(mutual funds sahi hai|amfi|subject to market risk)", text_lower):
-        indicators.append(("Statutory Investor Protection Notice", "success"))
-
-    return indicators
-
-
-# Main layout: Split 45% input, 55% results
-col_input, col_results = st.columns([4.5, 5.5], gap="large")
-
-with col_input:
-    st.markdown("#### Input Promotion")
-
-    if "preset_image_path" in st.session_state:
-        st.info(f"Loaded Preset: **{st.session_state.get('preset_name')}**", icon="📁")
-
-    uploaded_file = st.file_uploader(
-        "Upload image creative (JPG, PNG, WEBP)",
-        type=["jpg", "jpeg", "png", "webp"],
-    )
-
-    caption_input = st.text_area(
-        "Post Caption or Accompanying Text:",
-        value=st.session_state.get("preset_caption", ""),
-        placeholder="Enter caption or social post text (optional)...",
-        height=75,
-    )
-
-    evaluate_btn = st.button("Run Verification Analysis", type="primary", use_container_width=True)
-
-    active_img = None
-    if uploaded_file is not None:
-        active_img = Image.open(uploaded_file).convert("RGB")
-    elif "preset_image_path" in st.session_state and os.path.exists(st.session_state["preset_image_path"]):
-        active_img = Image.open(st.session_state["preset_image_path"]).convert("RGB")
-
-    if active_img is not None:
-        st.image(active_img, caption="Loaded Creative Preview", use_container_width=True)
-
-with col_results:
-    st.markdown("#### Verification Results")
-
-    if evaluate_btn and active_img is not None and models_ready:
-        start_time = time.perf_counter()
-
-        with st.spinner("Analyzing image text & visuals..."):
-            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-                active_img.save(tmp.name)
-                tmp_path = tmp.name
-
-            ocr_res = ocr_engine.read(tmp_path)
-            raw_ocr = ocr_res.text.strip() if ocr_res.text else ""
-
-            full_text = f"{raw_ocr} [SEP] {caption_input}".strip(" [SEP]")
-
-            enc = tokenizer(
-                full_text,
-                truncation=True,
-                max_length=128,
-                padding="max_length",
-                return_tensors="pt",
-            )
-            pixel_values = img_transform(active_img).unsqueeze(0)
-
-            with torch.no_grad():
-                logits = model(
-                    input_ids=enc["input_ids"],
-                    attention_mask=enc["attention_mask"],
-                    pixel_values=pixel_values,
-                )
-                probs = torch.softmax(logits, dim=-1)[0]
-                prob_real = float(probs[0].item())
-                prob_fake = float(probs[1].item())
-
-        elapsed_ms = (time.perf_counter() - start_time) * 1000
-        is_fake = prob_fake >= decision_threshold
-
-        # 1. Clear, Large, Eye-Catching Verdict Box
-        if is_fake:
-            st.markdown(f"""
-            <div class="hero-verdict hero-verdict-fake">
-                <div class="verdict-status verdict-status-fake">VERDICT</div>
-                <div class="verdict-main verdict-main-fake">🚨 FAKE / FRAUDULENT</div>
-                <div class="verdict-explanation">
-                    This promotion exhibits deceptive investment patterns with <strong>{prob_fake * 100:.1f}% confidence</strong>.
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+    if result.get("ocr") is not None:
+        st.markdown("**Extracted text**")
+        if result.get("raw_ocr"):
+            st.code(result["raw_ocr"], language=None, wrap_lines=True)
         else:
-            st.markdown(f"""
-            <div class="hero-verdict hero-verdict-real">
-                <div class="verdict-status verdict-status-real">VERDICT</div>
-                <div class="verdict-main verdict-main-real">✅ GENUINE / AUTHORIZED</div>
-                <div class="verdict-explanation">
-                    Consistent with registered investor awareness guidelines with <strong>{prob_real * 100:.1f}% confidence</strong>.
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.caption("No readable text was found. Try a clearer or more tightly cropped image.")
+        ocr = result["ocr"]
+        line_count = len(ocr.get("lines", []))
+        duration = result.get("durations_ms", {}).get("total", 0) / 1000
+        st.caption(f"{line_count} text lines · {duration:.1f} s elapsed · Local OCR")
 
-        # 2. Key Metrics Bar
-        st.markdown(f"""
-        <div class="metric-strip">
-            <div class="metric-cell">
-                <div class="metric-cell-label">Fraud Risk</div>
-                <div class="metric-cell-val" style="color: {'#ef4444' if is_fake else '#9ca3af'};">{prob_fake * 100:.1f}%</div>
-            </div>
-            <div class="metric-cell">
-                <div class="metric-cell-label">Legitimate Score</div>
-                <div class="metric-cell-val" style="color: {'#22c55e' if not is_fake else '#9ca3af'};">{prob_real * 100:.1f}%</div>
-            </div>
-            <div class="metric-cell">
-                <div class="metric-cell-label">Processing Time</div>
-                <div class="metric-cell-val">{elapsed_ms:.0f} ms</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # 3. Flags / Indicators
-        indicators = evaluate_indicators(f"{raw_ocr} {caption_input}")
+        st.markdown("**Text cues**")
+        indicators = result.get("indicators", [])
         if indicators:
-            st.markdown("**Detected Suspicious Indicators:**")
-            tags_html = "".join([f"<span class='flag-tag flag-{lvl}'>{lbl}</span>" for lbl, lvl in indicators])
-            st.markdown(tags_html, unsafe_allow_html=True)
+            st.caption("Descriptive matches from the image text and your caption; "
+                       "each needs context and independent verification.")
+            items = []
+            for cue in indicators:
+                matches = ", ".join(cue["matches"])
+                items.append(f'<div class="cue-item"><p class="cue-title">{escape(cue["label"])}</p>'
+                             f'<p class="cue-description">{escape(matches)}</p></div>')
+            st.markdown('<div class="cue-list">' + "".join(items) + '</div>', unsafe_allow_html=True)
+        else:
+            st.caption("No configured text cues matched. This does not establish authenticity.")
 
-        # 4. Collapsible Details (Clean and Uncluttered)
-        with st.expander("📄 View Extracted Text (OCR)", expanded=False):
-            if raw_ocr:
-                st.markdown(f"<div class='ocr-preview-box'>{raw_ocr}</div>", unsafe_allow_html=True)
-            else:
-                st.caption("No embedded text detected in creative.")
+        with st.expander("Analysis details"):
+            st.write("Mode:", next(label for label, value in MODE_LABELS.items() if value == result["mode"]))
+            st.write("Model status:", result["model_status"].replace("_", " "))
+            st.write("Input:", result.get("input"))
+            st.caption("English and Hindi OCR · The supplied caption and this image's OCR are used together.")
+            st.code(result["input_fingerprint"], language=None, wrap_lines=True)
+        st.download_button(
+            "Download analysis", data=json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False),
+            file_name="promotion-lens-analysis.json", mime="application/json", key="download_analysis",
+            use_container_width=True,
+        )
+    st.markdown('<p class="report-footnote">This workspace supports research and human review. '
+                'Check the original source and the underlying claims before drawing a conclusion.</p>',
+                unsafe_allow_html=True)
 
-        with st.expander("⚙️ Model Architecture Diagnostics", expanded=False):
-            st.markdown(f"""
-            - **Calibrated Cutoff:** `{decision_threshold:.2f}` (Items $\ge {decision_threshold:.2f}$ are classified as Fake)
-            - **Input Modalities:** Image (ViT 197 tokens) + Text (DistilBERT 128 tokens)
-            - **Attention Layers:** 4-head bidirectional cross-attention
-            """)
 
-    elif evaluate_btn and active_img is None:
-        st.warning("Please upload an image creative or pick a sample from the left sidebar.")
+st.session_state.setdefault("upload_revision", 0)
+st.session_state.setdefault("selected_sample", None)
+st.session_state.setdefault("caption_input", "")
+
+with st.sidebar:
+    st.markdown(header_html(), unsafe_allow_html=True)
+    st.markdown('<p class="section-eyebrow">Workspace settings</p>', unsafe_allow_html=True)
+    selected_mode = st.selectbox("Analysis mode", list(MODE_LABELS), key="analysis_mode")
+    mode = MODE_LABELS[selected_mode]
+    runtime = analysis_service.mode_runtime(ROOT, mode)
+    if mode == "ocr":
+        st.markdown('<span class="status-pill ready">Text extraction</span>', unsafe_allow_html=True)
+        st.caption("Read English and Hindi text from the selected image. No classifier is used.")
+    elif mode == "pilot":
+        st.markdown('<span class="status-pill experimental">Internal pilot · Unvalidated</span>', unsafe_allow_html=True)
+        st.warning("Internal pilot: a 14-image provisional dataset. Use this mode only to explore the pipeline, "
+                   "not to measure detection accuracy.")
     else:
-        st.markdown("""
-        <div class="empty-prompt">
-            <div style="font-size: 1.1rem; font-weight: 600; color: #d1d5db; margin-bottom: 6px;">
-                Ready to Evaluate
-            </div>
-            <div style="font-size: 0.85rem; max-width: 320px; margin: 0 auto;">
-                Select a test sample from the left sidebar or upload a creative on the left, then click <b>Run Verification Analysis</b>.
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        status = "Checkpoint present" if runtime["checkpoint_available"] else "Checkpoint unavailable"
+        st.markdown(f'<span class="status-pill pending">{status}</span>', unsafe_allow_html=True)
+        st.caption("Uses a compatible image + text research checkpoint. "
+                   "Compatibility is checked before inference.")
+    st.divider()
+    with st.expander("How it works"):
+        st.write("1. Choose one promotion image.")
+        st.write("2. Add its original caption, if available.")
+        st.write("3. Extract the text and inspect the evidence.")
+        st.caption("Images are analyzed on this machine. Uploads are not added to the dataset. "
+                   "OCR reads local model files; no automatic model downloads occur.")
+    st.button("Clear workspace", key="reset_input", on_click=reset_input, use_container_width=True)
+    st.caption("A Lightweight Multimodal Model for Detecting Fake Investment Promotions")
+    st.caption("Minor project · Supervisor: Dr. Shivangi Surati")
+
+st.markdown('<p class="hero-eyebrow">Promotion Lens / Image + text review</p>'
+            '<h1 class="hero-title">Look beyond the promise.</h1>'
+            '<p class="hero-description">Bring an investment promotion into focus. '
+            'Read the text in its image, add the original caption, and inspect the evidence in one place.</p>'
+            '<div class="workflow-steps">'
+            '<span class="workflow-step"><strong>01</strong> Choose a promotion</span>'
+            '<span class="workflow-step"><strong>02</strong> Extract the evidence</span>'
+            '<span class="workflow-step"><strong>03</strong> Review in context</span></div>', unsafe_allow_html=True)
+
+left, right = st.columns([1, 1.05], gap="large")
+with left, st.container(border=False, key="input_panel"):
+    st.markdown('<p class="section-eyebrow">01 / Input</p><h2 class="panel-title">The promotion</h2>'
+                '<p class="panel-note">Use a screenshot, advertisement or promotional graphic.</p>',
+                unsafe_allow_html=True)
+    source = st.radio("Image source", ["Upload", "Sample gallery"], key="input_source", horizontal=True)
+    image, source_id = None, None
+    if source == "Upload":
+        uploaded = st.file_uploader("Upload a promotion image", type=["png", "jpg", "jpeg", "webp"],
+                                    key=f"upload_{st.session_state.upload_revision}",
+                                    help="PNG, JPG or WebP · Up to 10 MB and 12 million pixels")
+        if uploaded is not None:
+            try:
+                image = decode_image(uploaded.getvalue())
+                source_id = ("upload", uploaded.name)
+            except (ValueError, UnidentifiedImageError, OSError, Image.DecompressionBombError):
+                st.error("This image could not be opened. Use a readable PNG, JPG or WebP "
+                         "under 10 MB and 12 million pixels.")
+        else:
+            st.caption("No image handy? Start with one of the bundled examples.")
+            st.button("Explore sample gallery", key="open_samples", on_click=open_samples,
+                      use_container_width=True)
+    else:
+        st.caption("Examples are for exploring the workflow. They are not a held-out benchmark.")
+        for row in (("sample_public_figure", "sample_news_page"),
+                    ("sample_fund_comparison", "sample_goal_planning")):
+            for column, key in zip(st.columns(2), row):
+                with column:
+                    st.button(SAMPLES[key]["title"], key=key, on_click=select_sample, args=(key,),
+                              type="primary" if st.session_state.selected_sample == key else "secondary",
+                              use_container_width=True)
+        selected_sample = SAMPLES.get(st.session_state.selected_sample)
+        if selected_sample:
+            try:
+                image = decode_image((ROOT / "test_samples" / selected_sample["file"]).read_bytes())
+                source_id = ("sample", st.session_state.selected_sample)
+                st.markdown(f'<p class="source-note">{escape(selected_sample["context"])}</p>',
+                            unsafe_allow_html=True)
+            except (ValueError, OSError):
+                st.error("This bundled image is unavailable. Choose another example or upload an image.")
+    if image is not None:
+        preview = image.copy()
+        preview.thumbnail((720, 430))
+        st.image(preview, caption="Selected promotion", use_container_width=False)
+        st.caption(f"{image.width:,} × {image.height:,} pixels")
+    caption = st.text_area("Original caption (optional)", key="caption_input", height=100, max_chars=3000,
+                           placeholder="Paste the text that accompanied this promotion…",
+                           help="Use the original caption. Sample descriptions are not supplied to the model.")
+    checkpoint_stamp, config_stamp = stamp(runtime["checkpoint_path"]), stamp(runtime["config_path"])
+    identity = ((source_id, analysis_service.input_fingerprint(image, caption, mode),
+                 checkpoint_stamp, config_stamp) if image is not None else None)
+    if st.session_state.get("analysis_identity") != identity:
+        clear_result()
+    if mode != "ocr" and not runtime["checkpoint_available"]:
+        st.warning("The selected model checkpoint is unavailable. Choose Extract text to inspect OCR evidence.")
+    elif mode == "pilot":
+        st.warning("Pilot demo · Unvalidated scores from a 14-image provisional dataset.")
+    else:
+        st.caption(f"Selected mode: {selected_mode}")
+    run = st.button("Analyze promotion", key="analyze", type="primary", use_container_width=True,
+                    disabled=image is None or (mode != "ocr" and not runtime["checkpoint_available"]))
+    if run and image is not None:
+        with st.spinner("Reading the image and assembling the evidence…"):
+            result = analysis_service.analyze_image(
+                image, caption, mode, ROOT, ocr_loader=lambda: cached_ocr(str(ROOT)),
+                model_loader=lambda: cached_classifier(str(ROOT), mode, checkpoint_stamp, config_stamp),
+            )
+        st.session_state.analysis_result = result
+        st.session_state.analysis_identity = identity
+    if st.session_state.get("analysis_result"):
+        st.markdown("[View analysis ↓](#a-closer-look)")
+
+with right, st.container(border=False, key="results_panel"):
+    result = st.session_state.get("analysis_result")
+    evidence_note = ("Evidence for the current image and caption." if result
+                     else "Extracted text and review cues will appear here.")
+    st.markdown('<p class="section-eyebrow">02 / Evidence</p><h2 class="panel-title">A closer look</h2>'
+                f'<p class="panel-note">{evidence_note}</p>', unsafe_allow_html=True)
+    if result:
+        render_result(result)
+    else:
+        st.markdown(empty_state_html(), unsafe_allow_html=True)
+        st.caption("Your analysis stays here until you change the image, caption or mode.")
+
+st.markdown('<p class="report-footnote">Promotion Lens · Image and text research workspace '
+            '· OCR extraction is separate from model classification.</p>', unsafe_allow_html=True)

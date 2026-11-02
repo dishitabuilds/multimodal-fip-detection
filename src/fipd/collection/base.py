@@ -6,12 +6,14 @@ import hashlib
 import json
 import logging
 import re
+import warnings
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Iterable, Iterator
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
+from PIL import Image
 
 from ..utils.http import PoliteSession
 from ..schema.records import FactCheckRecord, ImageAsset
@@ -165,11 +167,11 @@ class BaseScraper(ABC):
     def download_images(
         self, record: FactCheckRecord, max_images: int = 8, min_bytes: int = 4096
     ) -> None:
-        """Fetch each image to disk and record its sha256.
+        """Fetch readable images and record their actual pixel size and sha256.
 
-        Tiny files (spacers, broken responses) are dropped, and files that
-        hash-collide with something already downloaded are de-duplicated —
-        fact-checkers reuse the same stock art across dozens of articles.
+        Tiny files, corrupt images and non-image responses are dropped. HTML
+        dimensions describe page layout and can be missing or stale; decoded
+        dimensions are the evidence used when choosing the largest creative.
         """
         kept: list[ImageAsset] = []
         for asset in record.images[:max_images]:
@@ -185,8 +187,25 @@ class BaseScraper(ABC):
                 dest.unlink(missing_ok=True)
                 continue
 
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("error", Image.DecompressionBombWarning)
+                    with Image.open(dest) as image:
+                        image.verify()
+                    # verify() checks container integrity; load() also forces
+                    # pixel decoding, catching e.g. a truncated JPEG stream.
+                    with Image.open(dest) as image:
+                        image.load()
+                        width, height = image.size
+            except (OSError, ValueError, SyntaxError, Image.DecompressionBombError,
+                    Image.DecompressionBombWarning) as e:
+                log.warning("Unreadable image %s — skipped: %s", asset.url, e)
+                dest.unlink(missing_ok=True)
+                continue
+
             asset.local_path = str(dest.relative_to(self.out_dir))
             asset.sha256 = hashlib.sha256(dest.read_bytes()).hexdigest()
+            asset.width, asset.height = width, height
             kept.append(asset)
 
         record.images = kept

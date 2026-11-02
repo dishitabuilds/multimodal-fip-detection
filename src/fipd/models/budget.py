@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import statistics
+import sys
 import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -263,20 +264,27 @@ def file_size_mb(path: str | Path) -> float:
 
 
 def peak_ram_mb() -> float | None:
-    """Peak resident set size of this process, in MB, or None if unavailable.
+    """OS high-water resident set size of this process, in MiB, if available.
 
-    psutil gives the current RSS on every platform; the true peak needs
-    per-platform APIs, so this is sampled at the end of a measurement run and
-    is a lower bound. Returning None rather than guessing keeps an unmeasured
-    row visibly unmeasured in the report.
+    This covers the ENTIRE process lifetime, including imports and model
+    loading before inference. It cannot isolate a benchmark interval. Windows
+    exposes peak working set via psutil; Linux/macOS expose ru_maxrss with
+    different units. Current RSS is never substituted for an unavailable peak.
     """
     try:
-        import psutil
-    except ImportError:
-        log.info("psutil not installed — peak RAM will show as not measured")
-        return None
-    try:
-        return psutil.Process().memory_info().rss / (1024 * 1024)
+        if sys.platform == "win32":
+            import psutil
+
+            info = psutil.Process().memory_info()
+            peak = getattr(info, "peak_wset", None)
+            return None if peak is None else peak / (1024 * 1024)
+        if sys.platform in ("linux", "darwin"):
+            import resource
+
+            peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+            # macOS reports bytes; Linux reports KiB.
+            return peak / (1024 * 1024 if sys.platform == "darwin" else 1024)
+        log.info("OS peak RSS is unavailable on %s", sys.platform)
     except Exception as e:  # noqa: BLE001 - a metric must never kill a run
-        log.warning("could not read RSS: %s", e)
-        return None
+        log.warning("could not read OS peak RSS: %s", e)
+    return None

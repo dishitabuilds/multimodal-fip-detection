@@ -8,13 +8,18 @@ data/interim/*
 data/processed/*
 data/.httpcache/
 data/checkpoints/
+data/models/
+data/pip-cache/
 data/enriched/
+data/selected_input/
+data/reviewed/
 data/*.log
 data/*.out
 !data/**/.gitkeep
 
 # --- secrets ---
 .env
+.streamlit/secrets.toml
 *.session
 *.session-journal
 credentials.json

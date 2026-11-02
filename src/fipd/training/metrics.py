@@ -298,11 +298,21 @@ def ablation_table(
     lines.append("-" * w)
 
     if base and "fused" in aggs:
-        best_single = max((a.mean for n, a in aggs.items() if n != "fused"), default=None)
+        best_single = max((a for n, a in aggs.items() if n in {"text_only", "image_only"}),
+                          key=lambda a: a.mean, default=None)
         if best_single is not None:
-            gap = aggs["fused"].mean - best_single
-            spread = max(aggs["fused"].std, 0.0)
-            verdict = "fusion helps" if gap > spread else "within seed noise"
+            fused = aggs["fused"]
+            gap = fused.mean - best_single.mean
+            spread = max(fused.std, best_single.std)
+            if min(fused.n_seeds, best_single.n_seeds) < 2:
+                verdict = "single seed; uncertainty unmeasured"
+            elif abs(gap) <= spread:
+                verdict = "within observed seed spread"
+            elif gap > 0:
+                verdict = "above best single modality beyond observed seed spread"
+            else:
+                verdict = "below best single modality beyond observed seed spread"
             lines.append(f"fused - best single modality: {gap:+.3f}   ({verdict})")
+            lines.append("Seed spread is descriptive; it is not a significance test.")
     lines.append("=" * w)
     return "\n".join(lines)

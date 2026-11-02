@@ -1,194 +1,269 @@
 #!/usr/bin/env python3
-"""Stage 07 — the ablation: text-only vs image-only vs fused.
+"""Stage 07 — comparable, reproducible text/image/fused experiments.
 
-This is the experiment Dr. Surati asked for, and the reason the model code
-exists. It trains each arm at several seeds and reports mean ± std plus the
-delta over the text-only baseline, because "fusion helps" is a claim about a
-difference and three separate numbers do not state it.
-
-    # everything from configs/model.yaml
     python scripts/07_ablation.py
-
-    # one arm, one seed, while you are still debugging
     python scripts/07_ablation.py --arms fused --seeds 42 --epochs 1
 
-    # the Gate 4 experiment: only posts whose caption is benign
-    python scripts/07_ablation.py --image-only-claims
+Every invocation trains a fresh experiment unless --evaluate-only is supplied.
+All arms use one verified multimodal cohort. Full-test predictions also score
+an optional manually reviewed subset, without training a second model:
 
-Outputs into data/processed/ablation/:
-    <arm>_seed<seed>.json    per-run metrics, history, config, manifest hash
-    ablation.json            everything, aggregated
-    ablation.txt             the table for the report
+    python scripts/07_ablation.py --reviewed-subset data/reviewed_gate4.json
+    python scripts/07_ablation.py --evaluate-only --experiment-id <printed-id> \
+        --reviewed-subset data/reviewed_gate4.json
 
-Gate 4 is the one that matters: if `fused` does not beat `text_only` on posts
-where the caption is benign and the claim is image-only, the central thesis is
-not demonstrated regardless of overall F1.
+The subset JSON declares {"name": "gate4", "reviewed": true, "uids": [...]}.
+It must contain only members of the held-out test cohort and both classes.
+Automated image_only_claim flags are a review aid, not reviewed annotations.
+
+Reports: data/processed/ablation/<variant>/<experiment-id>/
+Checkpoints: data/checkpoints/<variant>/<experiment-id>/<arm>_seed<seed>.pt
+The demo's legacy deployment checkpoint is an explicitly selected artifact;
+this experiment runner never overwrites it.
 """
 
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict
+from datetime import datetime, timezone
 import json
-import sys
 from pathlib import Path
+import re
+import sys
+import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _bootstrap  # noqa: F401,E402
 
-from fipd.datasets.examples import class_weights, load_examples  # noqa: E402
+from fipd.datasets.examples import (  # noqa: E402
+    INPUT_PIPELINE_VERSION, class_weights,
+)
 from fipd.models.config import ARMS, load_model_config  # noqa: E402
-from fipd.training.metrics import ablation_table  # noqa: E402
+from fipd.datasets.experiments import (  # noqa: E402
+    common_cohort, file_hash, fingerprint, load_experiment_inputs,
+)
+from fipd.training.metrics import ablation_table, evaluate  # noqa: E402
 from fipd.utils.logging_setup import banner, setup  # noqa: E402
 
 
-def main() -> int:
+def reviewed_subset(path: Path, test_examples):
+    """Require an explicit human-review declaration and exact held-out IDs."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or data.get("reviewed") is not True:
+        raise ValueError("subset manifest must declare reviewed: true after manual review")
+    uids = data.get("uids")
+    if not isinstance(uids, list) or not uids or any(not isinstance(uid, str) for uid in uids):
+        raise ValueError("reviewed subset must contain a non-empty list of UID strings")
+    uid_set = set(uids)
+    if len(uid_set) != len(uids):
+        raise ValueError("reviewed subset contains duplicate UIDs")
+    test_ids = {ex.uid for ex in test_examples}
+    unknown = uid_set - test_ids
+    if unknown:
+        raise ValueError(f"reviewed subset contains UIDs outside the common test cohort: "
+                         f"{sorted(unknown)}")
+    indices = [i for i, ex in enumerate(test_examples) if ex.uid in uid_set]
+    if {test_examples[i].label for i in indices} != {0, 1}:
+        raise ValueError("reviewed subset must include both classes for binary evaluation")
+    name = re.sub(r"[^a-zA-Z0-9_-]+", "-", str(data.get("name") or "gate4")).strip("-")
+    name = (name or "gate4")[:48]
+    ids = [test_examples[i].uid for i in indices]
+    key = f"reviewed-{name}-{fingerprint(sorted(ids))[:12]}"
+    return key, indices, {"name": data.get("name") or "gate4", "reviewed": True,
+                          "manifest_sha256": file_hash(path), "uids": ids}
+
+
+def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", default=None)
     ap.add_argument("--data-dir", default="data")
-    ap.add_argument("--records", default=None,
-                    help="default: <data-dir>/interim/finance.jsonl")
-    ap.add_argument("--manifest", default=None,
-                    help="default: <data-dir>/processed/split_manifest.json")
+    ap.add_argument("--records", default=None)
+    ap.add_argument("--manifest", default=None)
     ap.add_argument("--arms", nargs="+", default=None, choices=list(ARMS))
     ap.add_argument("--seeds", nargs="+", type=int, default=None)
     ap.add_argument("--variant", default="student", choices=["student", "teacher"])
     ap.add_argument("--epochs", type=int, default=None)
     ap.add_argument("--batch-size", type=int, default=None)
     ap.add_argument("--image-only-claims", action="store_true",
-                    help="Gate 4: evaluate only where the caption is benign")
-    ap.add_argument("--out-dir", default=None)
+                    help="Gate 4 evaluation; requires --reviewed-subset")
+    ap.add_argument("--reviewed-subset", type=Path, default=None,
+                    help="JSON declaring reviewed: true and held-out uids")
+    ap.add_argument("--evaluate-only", action="store_true",
+                    help="reuse checkpoints from --experiment-id; do not train")
+    ap.add_argument("--experiment-id", default=None)
+    ap.add_argument("--out-dir", default=None, help="report root; variant/ID are appended")
     ap.add_argument("-v", "--verbose", action="store_true")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     log = setup(args.verbose)
-    cfg = load_model_config(args.config)
-    data_dir = Path(args.data_dir)
-
-    records = Path(args.records) if args.records else data_dir / "interim" / "finance.jsonl"
-    manifest = Path(args.manifest) if args.manifest else \
-        data_dir / "processed" / "split_manifest.json"
-    out_dir = Path(args.out_dir) if args.out_dir else data_dir / "processed" / "ablation"
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    arms = args.arms or cfg.arms
-    seeds = args.seeds or cfg.training.seeds
-    epochs = args.epochs or cfg.training.epochs
-    batch_size = args.batch_size or cfg.training.batch_size
-    arch = getattr(cfg, args.variant)
-
-    banner(f"Stage 07 — ablation ({args.variant}): {', '.join(arms)} x {len(seeds)} seeds")
-
-    # ---- data (no torch needed yet, so config errors surface early) --------
-    splits = load_examples(records, manifest, cfg.text)
-    train_ex, val_ex, test_ex = splits["train"], splits["val"], splits["test"]
-
-    if not train_ex or not val_ex:
-        log.error("need a non-empty train and val split; got %d/%d. "
-                  "Run scripts/04_curate.py and scripts/05_split.py first.",
-                  len(train_ex), len(val_ex))
-        return 1
-
-    weights = class_weights(train_ex)
-    if not weights:
-        log.error("training data has ONE class only. No classifier can be trained "
-                  "on this — see docs/CHECKLIST.md Gate 2 (negative-class strategy).")
-        return 1
-
-    if args.image_only_claims:
-        before = len(test_ex)
-        test_ex = [e for e in test_ex if e.image_only_claim]
-        log.info("Gate 4 subset: %d of %d test examples have a benign caption",
-                 len(test_ex), before)
-        if len(test_ex) < 30:
-            log.warning("only %d image-only-claim examples — too few to conclude "
-                        "anything; report the count alongside any number", len(test_ex))
-
-    # ---- torch from here --------------------------------------------------
     try:
+        cfg = load_model_config(args.config)
+        data_dir = Path(args.data_dir)
+        records = Path(args.records) if args.records else data_dir / "interim" / "finance.jsonl"
+        manifest = Path(args.manifest) if args.manifest else \
+            data_dir / "processed" / "split_manifest.json"
+        arms, seeds = args.arms or cfg.arms, args.seeds or cfg.training.seeds
+        if len(set(arms)) != len(arms) or len(set(seeds)) != len(seeds):
+            raise ValueError("arms and seeds must not contain duplicates")
+        epochs = args.epochs if args.epochs is not None else cfg.training.epochs
+        batch_size = args.batch_size if args.batch_size is not None else cfg.training.batch_size
+        if epochs < 1 or batch_size < 1:
+            raise ValueError("epochs and batch size must be >= 1")
+        if args.image_only_claims and not args.reviewed_subset:
+            raise ValueError("--image-only-claims requires --reviewed-subset; automated flags "
+                             "are only a proxy and must be manually reviewed")
+        if args.evaluate_only and not args.experiment_id:
+            raise ValueError("--evaluate-only requires the existing --experiment-id")
+        experiment_id = args.experiment_id or (
+            datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:8])
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,95}", experiment_id):
+            raise ValueError("experiment ID must be a simple directory name (up to 96 characters)")
+        arch = getattr(cfg, args.variant)
+        splits, manifest_data = load_experiment_inputs(
+            records, manifest, cfg.text,
+            allow_internal_smoke=cfg.raw.get("purpose") == "internal_smoke_only")
+        cohort, excluded, cohort_hash = common_cohort(splits, data_dir)
+        cohort_ids = {split: [ex.uid for ex in examples] for split, examples in cohort.items()}
+        train_ex, val_ex, test_ex = (cohort[split] for split in ("train", "val", "test"))
+        effective_config = {"input_pipeline_version": INPUT_PIPELINE_VERSION,
+                            "architecture": asdict(arch), "text": asdict(cfg.text),
+                            "training": {**asdict(cfg.training), "epochs": epochs,
+                                         "batch_size": batch_size},
+                            "measurement": asdict(cfg.measurement),
+                            "evaluation": cfg.evaluation, "source_config": cfg.raw}
+        identity = {"variant": args.variant, "config": effective_config,
+                    "cohort_hash": cohort_hash, "cohort_ids": cohort_ids,
+                    "records_sha256": file_hash(records),
+                    "manifest_sha256": file_hash(manifest),
+                    "manifest_hash": manifest_data.get("assignment_hash", "")}
+        config_hash = fingerprint(effective_config)
+        selections = {"full": (list(range(len(test_ex))), {"reviewed": False,
+                                                         "uids": cohort_ids["test"]})}
+        if args.reviewed_subset:
+            key, indices, details = reviewed_subset(args.reviewed_subset, test_ex)
+            selections[key] = (indices, details)
+            if len(indices) < 30:
+                log.warning("reviewed subset has only %d examples; report its size and "
+                            "avoid strong conclusions", len(indices))
+        out_root = Path(args.out_dir) if args.out_dir else data_dir / "processed" / "ablation"
+        out_dir = out_root / args.variant / experiment_id
+        checkpoint_dir = data_dir / "checkpoints" / args.variant / experiment_id
+        experiment_file = out_dir / "experiment.json"
+        if args.evaluate_only:
+            saved = json.loads(experiment_file.read_text(encoding="utf-8"))
+            if saved["identity"] != identity:
+                raise ValueError("data/config/cohort differ from this experiment; use its original "
+                                 "inputs and effective settings for evaluation-only")
+            for arm in arms:
+                for seed in seeds:
+                    for path in (checkpoint_dir / f"{arm}_seed{seed}.pt",
+                                 out_dir / "runs" / f"{arm}_seed{seed}.json"):
+                        if not path.is_file():
+                            raise FileNotFoundError(f"missing experiment artifact: {path}")
+        elif out_dir.exists() or checkpoint_dir.exists():
+            raise FileExistsError(f"experiment {experiment_id} already exists; use "
+                                  "--evaluate-only or choose a new experiment ID")
+    except (OSError, ValueError, KeyError) as exc:
+        log.error("%s", exc)
+        return 1
+
+    try:
+        import torch
+
         from fipd.datasets.torch_data import build_dataset, build_loader
         from fipd.models.arms import build_arm
-        from fipd.training.loop import RunResult, evaluate_arm, train_arm
-    except ImportError as e:
-        log.error("%s", e)
-        log.error('install the model extras: pip install -e ".[model]"')
+        from fipd.training.loop import RunResult, evaluate_arm, set_seed, train_arm
+    except ImportError as exc:
+        log.error('%s; install model extras with pip install -e ".[model]"', exc)
         return 1
 
-    manifest_hash = ""
-    if manifest.exists():
-        manifest_hash = json.loads(manifest.read_text(encoding="utf-8")).get(
-            "assignment_hash", "")
-
-    results: dict[str, list] = {arm: [] for arm in arms}
-
+    banner(f"Stage 07 — {args.variant}/{experiment_id}: {', '.join(arms)} x {len(seeds)} seeds")
+    if not args.evaluate_only:
+        out_dir.mkdir(parents=True)
+        experiment_file.write_text(json.dumps(
+            {"experiment_id": experiment_id, "identity": identity,
+             "config_hash": config_hash, "excluded_ids": excluded}, indent=2), encoding="utf-8")
+    weights = class_weights(train_ex)
+    results = {name: {arm: [] for arm in arms} for name in selections}
     for arm in arms:
-        needs_image = arm in ("image_only", "fused")
-
-        # The fused arm can only learn from items that have both modalities.
-        # Restricting every arm to the same items keeps the comparison fair —
-        # otherwise the arms are scored on different test sets.
-        usable_train = [e for e in train_ex if e.has_image or not needs_image]
-        usable_val = [e for e in val_ex if e.has_image or not needs_image]
-        usable_test = [e for e in test_ex if e.has_image or not needs_image]
-        log.info("[%s] %d train / %d val / %d test examples",
-                 arm, len(usable_train), len(usable_val), len(usable_test))
-
         for seed in seeds:
-            log.info("=" * 62)
-            log.info("arm=%s seed=%d", arm, seed)
-            log.info("=" * 62)
-
+            # Seed construction as well as training: the head/fusion are random.
+            set_seed(seed)
             ds_kw = dict(tokenizer_name=arch.text_encoder, image_root=data_dir,
                          image_size=cfg.measurement.image_size,
                          max_tokens=cfg.measurement.max_text_tokens,
-                         needs_image=needs_image)
-            train_loader = build_loader(
-                build_dataset(usable_train, train=True, **ds_kw),
-                batch_size=batch_size, shuffle=True,
-                num_workers=cfg.training.num_workers, seed=seed)
-            val_loader = build_loader(build_dataset(usable_val, **ds_kw),
-                                      batch_size=batch_size)
-            test_loader = build_loader(build_dataset(usable_test, **ds_kw),
-                                       batch_size=batch_size)
+                         needs_image=arm in ("image_only", "fused"))
+            # Reloading a checkpoint needs architecture/config only; downloading
+            # pretrained weight files here would immediately discard them.
+            model = build_arm(arm, arch, from_scratch=args.evaluate_only)
+            run_path = out_dir / "runs" / f"{arm}_seed{seed}.json"
+            if args.evaluate_only:
+                run = RunResult.load(run_path)
+                ckpt = torch.load(checkpoint_dir / f"{arm}_seed{seed}.pt",
+                                  map_location="cpu", weights_only=True)
+                for key, value in (("experiment_id", experiment_id), ("variant", args.variant),
+                                   ("arm", arm), ("seed", seed), ("cohort_hash", cohort_hash)):
+                    if ckpt.get(key) != value:
+                        raise ValueError(f"checkpoint {key} does not match the experiment")
+                model.load_state_dict(ckpt["state_dict"])
+                run.decision_threshold = float(ckpt["threshold"])
+            else:
+                train_loader = build_loader(build_dataset(train_ex, train=True, **ds_kw),
+                                            batch_size=batch_size, shuffle=True,
+                                            num_workers=cfg.training.num_workers, seed=seed)
+                val_loader = build_loader(build_dataset(val_ex, **ds_kw), batch_size=batch_size)
+                run = train_arm(
+                    model, train_loader, val_loader, arm=arm, seed=seed, epochs=epochs,
+                    lr=cfg.training.lr, head_lr=cfg.training.head_lr,
+                    weight_decay=cfg.training.weight_decay, warmup_ratio=cfg.training.warmup_ratio,
+                    max_grad_norm=cfg.training.max_grad_norm,
+                    patience=cfg.training.early_stopping_patience, class_weights=weights,
+                    checkpoint_dir=checkpoint_dir, manifest_hash=identity["manifest_hash"],
+                    variant=args.variant, experiment_id=experiment_id, cohort_hash=cohort_hash,
+                    cohort_ids=cohort_ids, run_config=effective_config)
 
-            model = build_arm(arm, arch)
-            run: RunResult = train_arm(
-                model, train_loader, val_loader,
-                arm=arm, seed=seed, epochs=epochs,
-                lr=cfg.training.lr, head_lr=cfg.training.head_lr,
-                weight_decay=cfg.training.weight_decay,
-                warmup_ratio=cfg.training.warmup_ratio,
-                max_grad_norm=cfg.training.max_grad_norm,
-                patience=cfg.training.early_stopping_patience,
-                class_weights=weights,
-                checkpoint_dir=data_dir / "checkpoints",
-                manifest_hash=manifest_hash,
-            )
+            test_loader = build_loader(build_dataset(test_ex, **ds_kw), batch_size=batch_size)
+            run.test, labels, scores = evaluate_arm(model, test_loader, arm,
+                                                   threshold=run.decision_threshold)
+            if len(labels) != len(test_ex):
+                raise ValueError("test prediction count differs from the recorded cohort")
+            for name, (indices, details) in selections.items():
+                metrics = evaluate(labels[indices], scores[indices],
+                                   threshold=run.decision_threshold)
+                ids = [test_ex[i].uid for i in indices]
+                run.evaluation_ids[name] = ids
+                run.evaluations[name] = metrics
+                results[name][arm].append(metrics)
+                eval_dir = out_dir / "evaluations" / name
+                eval_dir.mkdir(parents=True, exist_ok=True)
+                payload = {"experiment_id": experiment_id, "variant": args.variant,
+                           "arm": arm, "seed": seed, "config_hash": config_hash,
+                           "cohort_hash": cohort_hash, "evaluation": details,
+                           "metrics": metrics.to_dict(), "checkpoint": run.checkpoint,
+                           "predictions": [{"uid": test_ex[i].uid, "label": int(labels[i]),
+                                            "score": float(scores[i])} for i in indices]}
+                (eval_dir / f"{arm}_seed{seed}.json").write_text(
+                    json.dumps(payload, indent=2), encoding="utf-8")
+            run.save(run_path)
 
-            if usable_test:
-                run.test, _, _ = evaluate_arm(model, test_loader, arm,
-                                              threshold=run.decision_threshold)
-                log.info("[%s seed=%d] TEST %s", arm, seed, run.test.summary())
-
-            run.save(out_dir / f"{arm}_seed{seed}.json")
-            results[arm].append(run.test or run.val)
-
-    # ---- report -----------------------------------------------------------
-    metric = "macro_f1"
-    table = ablation_table({k: [m for m in v if m] for k, v in results.items()},
-                           metric=metric, reference="text_only")
-    print("\n" + table + "\n")
-
-    (out_dir / "ablation.txt").write_text(table, encoding="utf-8")
-    (out_dir / "ablation.json").write_text(json.dumps(
-        {arm: [m.to_dict() for m in runs if m] for arm, runs in results.items()},
-        indent=2, default=str), encoding="utf-8")
-
-    print(f"wrote {out_dir/'ablation.txt'} and {out_dir/'ablation.json'}")
-    if args.image_only_claims:
-        print("\nThis is the Gate 4 table. Quote the subset size next to it.\n")
-    else:
-        print("\nNow run with --image-only-claims. That subset is the thesis.\n")
+    # Selection hashes preserve reports from smaller arm/seed invocations too.
+    selection_id = fingerprint({"arms": sorted(arms), "seeds": sorted(seeds)})[:12]
+    for name, arm_results in results.items():
+        table = ablation_table(arm_results, metric="macro_f1", reference="text_only")
+        eval_dir = out_dir / "evaluations" / name
+        base = eval_dir / f"ablation_{selection_id}"
+        base.with_suffix(".txt").write_text(table, encoding="utf-8")
+        base.with_suffix(".json").write_text(json.dumps(
+            {"experiment_id": experiment_id, "variant": args.variant, "evaluation": name,
+             "config_hash": config_hash, "cohort_hash": cohort_hash,
+             "uids": selections[name][1]["uids"],
+             "arms": {arm: [metric.to_dict() for metric in runs]
+                      for arm, runs in arm_results.items()}, "seeds": seeds}, indent=2),
+            encoding="utf-8")
+        print(f"\n{name}: {len(selections[name][0])} held-out examples\n{table}\n")
+    print(f"Experiment ID: {experiment_id}\nReports: {out_dir}\nCheckpoints: {checkpoint_dir}")
     return 0
 
 

@@ -1,0 +1,81 @@
+# OPT-IN PRETRAINED RESEARCH CANDIDATE; default configs/model.yaml is unchanged.
+# Not trained or benchmarked here. Access to ai4bharat/indic-bert is currently
+# gated on Hugging Face; obtain access and verify tokenizer/weights before use.
+# This is IndicBERT v1 (shared ALBERT), NOT the much larger IndicBERT v2.
+# Official English/Hindi coverage: https://huggingface.co/ai4bharat/indic-bert
+# Text config: https://github.com/AI4Bharat/Indic-BERT-v1/blob/master/configs/albert_base_config.json
+# Vision config: https://huggingface.co/facebook/deit-tiny-patch16-224/blob/main/config.json
+# The non-distilled DeiT checkpoint uses HF model_type=vit, supported by AutoModel.
+# Config-only counts including base-model poolers and this repository's heads:
+# text_only 33,628,674; image_only 5,635,970; fused 39,858,114 (<50M).
+# FP32 fused weights are ~152MiB and DO NOT pass the 100MiB disk target.
+# INT8 export, embedding compression, latency, RAM and F1 retention are unverified.
+
+budget:
+  max_params_m: 50.0
+  max_disk_mb: 100.0
+  max_latency_p50_ms: 100.0
+  max_latency_p95_ms: 250.0
+  max_peak_ram_mb: 1024.0
+  min_f1_retention: 0.95
+
+measurement:
+  batch_size: 1
+  threads: 4
+  image_size: 224
+  max_text_tokens: 128
+  warmup_runs: 10
+  timed_runs: 100
+  precision: int8  # deployment TARGET; current PyTorch budget command reports actual fp32
+  reference_machine: "Intel Core 7 150U, 12 threads, 24 GB RAM, Windows 11"
+
+model:
+  teacher:
+    text_encoder: google/muril-base-cased
+    image_encoder: google/vit-base-patch16-224
+    hidden_dim: 768
+    fusion: cross_attention
+    fusion_heads: 8
+    fusion_layers: 2
+    dropout: 0.1
+  student:
+    text_encoder: ai4bharat/indic-bert
+    image_encoder: facebook/deit-tiny-patch16-224
+    hidden_dim: 192
+    fusion: cross_attention
+    fusion_heads: 3
+    fusion_layers: 1
+    dropout: 0.1
+  arms: [text_only, image_only, fused]
+
+text:
+  fields: [ocr_text, claim_text, title]
+  separator: " [SEP] "
+  max_chars: 2000
+  lowercase: false
+  transliterate: true
+
+training:
+  seeds: [13, 42, 1337]
+  epochs: 8
+  batch_size: 16
+  lr: 0.00002
+  head_lr: 0.0001
+  weight_decay: 0.01
+  warmup_ratio: 0.1
+  max_grad_norm: 1.0
+  early_stopping_patience: 3
+  monitor: val_macro_f1
+  class_weighting: balanced
+  mixed_precision: true
+  num_workers: 0
+
+evaluation:
+  metrics: [precision, recall, f1, macro_f1, pr_auc, roc_auc]
+  positive_label: fake
+  decision_threshold: 0.5
+
+distillation:
+  temperature: 4.0
+  alpha_kd: 0.7
+  alpha_ce: 0.3
