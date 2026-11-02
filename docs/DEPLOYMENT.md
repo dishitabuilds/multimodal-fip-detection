@@ -10,12 +10,14 @@ workbench; deployment does not establish classifier accuracy.
 - Branch: `codex/streamlit-demo` (the tested deployment snapshot).
 - Entrypoint: `deployment/streamlit_app.py`
 - Python: **3.12** in Advanced settings.
+- App URL: `promotion-lens-demo.streamlit.app`.
 - No collection API key is needed for the demo.
 
 Community Cloud reads `deployment/requirements.txt` beside the entrypoint before
 the root requirements file. This installs the frontend, classical lab and media
-dependencies, with CPU-only PyTorch wheels. Keep the collection-only root
-requirements unchanged.
+dependencies, with official Python 3.12 CPU-only PyTorch wheel URLs. Other
+dependencies resolve from PyPI, avoiding uv's first-index conflicts with the
+PyTorch package index. Keep the collection-only root requirements unchanged.
 
 The cloud entrypoint prepares public EasyOCR English/Hindi weights on first use,
 and the public multilingual Whisper base weights when Audio Video is first
@@ -26,10 +28,10 @@ existing `app.py` directly retains its offline-only startup.
 
 ## Before creating the app
 
-1. Review, test, commit and push the current app source, `src/`, `pages/`,
-   `configs/`, `scripts/`, `.streamlit/config.toml`, `test_samples/`, `pyproject.toml`
-   and `deployment/`. The local checkout contains substantial uncommitted work;
-   the existing GitHub branch does not automatically include it.
+1. Use the tested `codex/streamlit-demo` branch already pushed to GitHub. For
+   subsequent releases, review, test, commit and push the updated source before
+   expecting it to appear on Streamlit. The local Word report, collected data and
+   trained model artifacts are not part of the deployment branch.
 2. Sign in at [Streamlit Community Cloud](https://share.streamlit.io/) with the
    GitHub account that can access this repository.
 3. Select **Create app**, enter the settings above, and deploy.
