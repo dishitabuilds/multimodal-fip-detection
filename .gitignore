@@ -55,3 +55,6 @@ desktop.ini
 
 # --- claude code local settings ---
 .claude/
+
+# Locally packaged classifier and evaluation bundle
+demo_bundle/

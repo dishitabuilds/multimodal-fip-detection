@@ -16,6 +16,7 @@ from fipd.models.classical import (
 
 ROOT = Path(__file__).resolve().parents[1]
 RUN_ROOT = ROOT / "data/processed/lab"
+BUNDLED_MODELS = ROOT / "demo_bundle/models"
 
 st.set_page_config(page_title="ML Lab · Promotion Lens", layout="wide")
 st.title("Machine learning lab")
@@ -44,6 +45,8 @@ with st.sidebar:
     internal = st.checkbox("Show internal pilot models", value=False)
     purpose = "internal_smoke_only" if internal else "research"
     artifacts = sorted((RUN_ROOT / purpose).glob("*/models/*.joblib"), reverse=True)
+    if internal and BUNDLED_MODELS.is_dir():
+        artifacts = sorted(BUNDLED_MODELS.glob("*.joblib")) + artifacts
     if internal:
         st.warning("Provisional pilot data. Outputs and metrics are unvalidated.")
     st.caption("Train a new run from the terminal using scripts/10_train_lab.py.")
@@ -54,9 +57,19 @@ if not artifacts:
     st.code(".\\.venv\\Scripts\\python.exe scripts/10_train_lab.py --arms text_only", language="powershell")
     st.stop()
 
+def recommended_model_index(paths):
+    for index, path in enumerate(paths):
+        if path.parent == BUNDLED_MODELS and path.stem == "fused_linear_svm":
+            return index
+    for index, path in enumerate(paths):
+        if path.stem == "fused_linear_svm":
+            return index
+    return 0
+
+
 artifact_path = st.selectbox(
     "Trained model", artifacts,
-    index=next((i for i, path in enumerate(artifacts) if path.stem == "fused_linear_svm"), 0),
+    index=recommended_model_index(artifacts),
     format_func=lambda path: f"{path.parent.parent.name} / {path.stem.replace('_', ' ')}")
 try:
     artifact = cached_model(str(artifact_path), artifact_path.stat().st_mtime_ns, internal)
@@ -65,8 +78,50 @@ except (ValueError, OSError, ImportError) as exc:
     st.stop()
 
 if internal:
-    st.warning("This model uses the 14-image provisional pilot. Use it to demonstrate the pipeline. "
-               "Its predictions and test metrics do not establish detection accuracy.")
+    st.warning("This model was trained for internal evaluation. "
+               "Its predictions and test metrics do not establish real-world detection accuracy.")
+
+if internal:
+    st.subheader("Three case demonstration")
+    examples = {
+        "Scam promotion": ("sample_fake_1.png", "fake"),
+        "Genuine promotion": ("sample_real_with_text_1.webp", "real"),
+        "Ambiguous promotion": ("sample_fake_3.png", "review"),
+    }
+    case = st.selectbox("Case", list(examples))
+    sample_name, expected = examples[case]
+    sample_path = ROOT / "test_samples" / sample_name
+    st.image(str(sample_path), width=420)
+    if st.button("Analyze this case"):
+        from fipd.frontend.analysis import analyze_image
+
+        with Image.open(sample_path) as source:
+            sample_image = canonical_image(source)
+        extracted = analyze_image(sample_image, root=ROOT, ocr_loader=cached_ocr)
+        if extracted.get("error"):
+            st.error(extracted["error"]["message"])
+        else:
+            text = extracted["raw_ocr"]
+            st.write("OCR evidence", text or "No text extracted")
+            run = (BUNDLED_MODELS if BUNDLED_MODELS.is_dir() else
+                   RUN_ROOT / "internal_smoke_only/visual-source-holdout-20261113/models")
+            predictions = []
+            for name in ("text_only_linear_svm", "fused_linear_svm"):
+                path = run / f"{name}.joblib"
+                model = cached_model(str(path), path.stat().st_mtime_ns, True)
+                encoder = None
+                if model["arm"] == "fused":
+                    weights = (ROOT / DEFAULT_IMAGE_WEIGHTS if (ROOT / DEFAULT_IMAGE_WEIGHTS).is_file()
+                               else ROOT / "demo_bundle/weights" / DEFAULT_IMAGE_WEIGHTS.name)
+                    encoder = cached_encoder(str(weights), weights.stat().st_mtime_ns)
+                predictions.append(predict_lab(model, text, image=sample_image, encoder=encoder))
+            first, second = st.columns(2)
+            for column, name, result in zip((first, second), ("Text SVM", "Fused SVM"), predictions):
+                column.metric(name, result["label"].title())
+                column.caption(f"Decision margin: {result['score']:.3f}")
+            verdict = "Needs review" if expected == "review" or predictions[0]["label"] != predictions[1]["label"] else predictions[1]["label"].title()
+            st.write("Case state", verdict)
+            st.caption("Demonstration samples are provisional. Verify claims against the original source.")
 
 left, right = st.columns([1, 1])
 with left:
@@ -113,7 +168,8 @@ with left:
         try:
             encoder = None
             if artifact["arm"] != "text_only":
-                weights = ROOT / DEFAULT_IMAGE_WEIGHTS
+                weights = (ROOT / DEFAULT_IMAGE_WEIGHTS if (ROOT / DEFAULT_IMAGE_WEIGHTS).is_file()
+                           else ROOT / "demo_bundle/weights" / DEFAULT_IMAGE_WEIGHTS.name)
                 encoder = cached_encoder(str(weights), weights.stat().st_mtime_ns)
             with st.spinner("Running the model…"):
                 result = predict_lab(artifact, ocr_text, caption, image, encoder)
@@ -145,7 +201,8 @@ with right:
                "TF-IDF vocabulary and image scaling were fitted on training data only.")
 
 with st.expander("Training run and model comparisons"):
-    report_path = artifact_path.parent.parent / "experiment.json"
+    report_path = (ROOT / "demo_bundle/experiment.json" if artifact_path.parent == BUNDLED_MODELS
+                   else artifact_path.parent.parent / "experiment.json")
     try:
         report = json.loads(report_path.read_text(encoding="utf-8"))
         st.caption(report["notice"])
@@ -158,11 +215,12 @@ with st.expander("Training run and model comparisons"):
                    "Latency includes feature extraction and classifier inference; it excludes "
                    "OCR, file decoding and model loading. Image models also need the shared "
                    "MobileNet weights (about 9.8 MB), in addition to each classifier artifact.")
-        detail_path = artifact_path.parent.parent / "evaluations" / f"{artifact_path.stem}.json"
+        report_dir = ROOT / "demo_bundle" if artifact_path.parent == BUNDLED_MODELS else artifact_path.parent.parent
+        detail_path = report_dir / "evaluations" / f"{artifact_path.stem}.json"
         detail = json.loads(detail_path.read_text(encoding="utf-8"))
         st.write("**Confusion counts (fake is the positive class):**", detail["metrics"]["confusion"])
         st.download_button("Download comparison CSV",
-                           (artifact_path.parent.parent / "comparison.csv").read_bytes(),
+                           (report_dir / "comparison.csv").read_bytes(),
                            file_name="lab-comparison.csv", mime="text/csv")
     except (OSError, ValueError, KeyError):
         st.info("A complete experiment report is not available for this artifact.")
