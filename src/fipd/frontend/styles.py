@@ -414,10 +414,11 @@ def navigation_html(active: str, routes: dict | None = None) -> str:
     pages = (("image", "/", "Image + text"), ("media", "/Audio_Video", "Audio + video"),
              ("audit", "/Promotion_Audit", "Claim evidence"))
     links = []
+    target = "_top" if routes else "_self"
     for key, url, label in pages:
         url = (routes or {}).get(key, url)
         current = ' aria-current="page"' if key == active else ''
-        links.append(f'<a href="{url}" target="_self"{current}>{label}</a>')
+        links.append(f'<a href="{url}" target="{target}"{current}>{label}</a>')
     return '<nav class="workspace-nav" aria-label="Review workspace">' + ''.join(links) + '</nav>'
 
 

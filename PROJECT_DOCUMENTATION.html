@@ -860,6 +860,7 @@ python scripts/06_budget.py --arm fused --variant student --checkpoint data/chec
 
   <div class="card">
     <h3>22 November 2026 &mdash; Production release preparation</h3>
+    <p>The integrated source was pushed to GitHub main and the production branch, and the sleeping Streamlit instance was woken. The new image-review UI loaded on the hosted URL. Live inspection exposed Streamlit's outer iframe wrapper; hosted workspace links now navigate the top-level page to prevent nesting the application inside itself. A cloud-entrypoint regression assertion covers the hosted audio and audit link targets.</p>
     <p>The UI and audio release integrates collaborator commit <code>ba9d93b</code> from GitHub main and targets the configured <code>codex/streamlit-demo</code> deployment branch. The collaborator's ML Lab demonstration and bundle-loading support are retained. Its <a href="docs/RELEASE_STATUS.md">release status</a> and <a href="docs/PROFESSOR_HANDOFF.md">professor handoff</a> report a separate 47-image local experiment and its limitations; those results have not been reproduced on this Windows checkout. The ignored classifier bundle is not supplied by this source release, so those additions do not make hosted classifier inference available. All 48 frontend, media, lab, audit and cloud-startup regression tests passed on the integrated release. Production verification is recorded separately from local checks.</p>
   </div>
 

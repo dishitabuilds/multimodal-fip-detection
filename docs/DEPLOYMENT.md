@@ -18,6 +18,8 @@ navigation, the recording/evidence layout and timestamped TXT transcript export.
 Publish the integrated source to `codex/streamlit-demo` to trigger Community Cloud;
 the matching source is also kept on `main`. This release preserves the newer
 collaborator demonstration code but does not package its ignored classifier bundle.
+Hosted workspace links target the top-level page because Community Cloud embeds
+the running application in an outer iframe; local links navigate the current page.
 
 Community Cloud reads `deployment/requirements.txt` beside the entrypoint before
 the root requirements file. This installs the frontend, classical lab and media
