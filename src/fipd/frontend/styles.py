@@ -409,17 +409,28 @@ def page_header_html(eyebrow: str, title: str, description: str) -> str:
     )
 
 
-def navigation_html(active: str, routes: dict | None = None) -> str:
-    """Streamlit's default page URLs; links work with both local/cloud entrypoints."""
+def navigation_html(active: str) -> str:
+    """Default local page URLs, also usable when a page runs independently."""
     pages = (("image", "/", "Image + text"), ("media", "/Audio_Video", "Audio + video"),
              ("audit", "/Promotion_Audit", "Claim evidence"))
     links = []
-    target = "_top" if routes else "_self"
     for key, url, label in pages:
-        url = (routes or {}).get(key, url)
         current = ' aria-current="page"' if key == active else ''
-        links.append(f'<a href="{url}" target="{target}"{current}>{label}</a>')
+        links.append(f'<a href="{url}" target="_self"{current}>{label}</a>')
     return '<nav class="workspace-nav" aria-label="Review workspace">' + ''.join(links) + '</nav>'
+
+
+def render_navigation(root, active: str) -> None:
+    """Use registered Streamlit page links inside Community Cloud's sandbox."""
+    import streamlit as st
+
+    if st.session_state.get("lens_page_routes"):
+        pages = (("app.py", "Image + text"), ("pages/3_Audio_Video.py", "Audio + video"),
+                 ("pages/2_Promotion_Audit.py", "Claim evidence"))
+        for column, (path, label) in zip(st.columns(3), pages):
+            column.page_link(str(root / path), label=label, use_container_width=True)
+    else:
+        st.markdown(navigation_html(active), unsafe_allow_html=True)
 
 
 def empty_state_html() -> str:

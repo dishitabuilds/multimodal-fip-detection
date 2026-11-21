@@ -14,7 +14,7 @@ from PIL import Image, UnidentifiedImageError
 import streamlit as st
 
 from fipd.frontend import analysis as analysis_service
-from fipd.frontend.styles import CSS, empty_state_html, header_html, page_header_html, navigation_html
+from fipd.frontend.styles import CSS, empty_state_html, header_html, page_header_html, render_navigation
 
 ROOT = Path(__file__).resolve().parent
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -213,7 +213,7 @@ with st.sidebar:
 st.markdown(page_header_html("Image + text review", "Look beyond the promise.",
             "A clearer view of investment promotions. Bring together the image, its wording "
             "and the original caption to inspect the evidence."), unsafe_allow_html=True)
-st.markdown(navigation_html("image", st.session_state.get("lens_page_routes")), unsafe_allow_html=True)
+render_navigation(ROOT, "image")
 
 st.markdown('<div class="workflow-steps">'
             '<span class="workflow-step"><strong>01</strong> Choose a promotion</span>'

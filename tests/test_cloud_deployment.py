@@ -82,7 +82,6 @@ def test_cloud_entrypoint_preserves_the_existing_image_page(monkeypatch):
     app = AppTest.from_file(str(root / "deployment/streamlit_app.py")).run(timeout=30)
     assert not app.exception
     assert app.selectbox(key="analysis_mode").value == "Extract text"
-    navigation = next(item.value for item in app.markdown if 'class="workspace-nav"' in item.value)
-    assert 'href="/audio-video" target="_top"' in navigation
-    assert 'href="/promotion-audit" target="_top"' in navigation
+    assert [item.proto.label for item in app.get("page_link")] == [
+        "Image + text", "Audio + video", "Claim evidence"]
     st.cache_resource.clear()

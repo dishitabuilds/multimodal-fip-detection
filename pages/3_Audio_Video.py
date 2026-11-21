@@ -8,7 +8,7 @@ from pathlib import Path
 import streamlit as st
 
 from fipd.analysis.media import analyze_media
-from fipd.frontend.styles import CSS, header_html, page_header_html, navigation_html
+from fipd.frontend.styles import CSS, header_html, page_header_html, render_navigation
 from fipd.enrichment.media import (
     AUDIO_EXTENSIONS, VIDEO_EXTENSIONS, DEFAULT_SPEECH_MODEL, MediaLimits, load_speech_model,
 )
@@ -20,7 +20,7 @@ st.markdown(f"<style>{CSS}</style>", unsafe_allow_html=True)
 st.markdown(page_header_html("Audio + video review", "Hear the claim. See the context.",
             "Turn spoken promotions into timestamped evidence. Read the transcript, inspect on-screen "
             "wording and keep the passages that need a closer look."), unsafe_allow_html=True)
-st.markdown(navigation_html("media", st.session_state.get("lens_page_routes")), unsafe_allow_html=True)
+render_navigation(ROOT, "media")
 
 st.caption("Files are processed locally. Up to 50 MB and 2 minutes per clip. "
            "Speech and OCR are automatic transcripts; check names, numbers and context.")
