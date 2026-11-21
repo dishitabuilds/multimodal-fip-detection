@@ -9,6 +9,7 @@ from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
 import streamlit as st
+from fipd.frontend.styles import CSS, header_html, page_header_html
 
 from fipd.analysis.promotion_audit import AUDIT_VERSION, audit_promotion
 
@@ -30,9 +31,10 @@ EXAMPLES = {
 }
 
 st.set_page_config(page_title="Promotion audit · Promotion Lens", layout="wide")
-st.title("Promotion framing and evidence audit")
-st.write("Correct facts can still appear in a selective or overly promising promotion. "
-         "Inspect its wording and record claim evidence separately.")
+st.markdown(f"<style>{CSS}</style>", unsafe_allow_html=True)
+st.markdown(page_header_html("Claim evidence", "Look closer at the claim.",
+            "Correct facts can still appear in a selective or overly promising promotion. "
+            "Inspect the wording and keep a source-backed record of each claim."), unsafe_allow_html=True)
 st.caption("English wording rules with reviewer-supplied evidence. "
            "This page works independently of the binary fake or legitimate model.")
 
@@ -57,6 +59,7 @@ def fingerprint(payload):
 
 
 with st.sidebar:
+    st.markdown(header_html(), unsafe_allow_html=True)
     st.header("What this audit covers")
     st.write("Wording cues identify passages to review. Evidence entries retain the "
              "reviewer's source, date and reasoning for individual claims.")

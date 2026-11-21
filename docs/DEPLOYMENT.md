@@ -13,6 +13,12 @@ workbench; deployment does not establish classifier accuracy.
 - App URL: `promotion-lens-demo.streamlit.app`.
 - No collection API key is needed for the demo.
 
+The 22 November 2026 release adds the shared UI refresh, direct image/audio/audit
+navigation, the recording/evidence layout and timestamped TXT transcript export.
+Publish the integrated source to `codex/streamlit-demo` to trigger Community Cloud;
+the matching source is also kept on `main`. This release preserves the newer
+collaborator demonstration code but does not package its ignored classifier bundle.
+
 Community Cloud reads `deployment/requirements.txt` beside the entrypoint before
 the root requirements file. This installs the frontend, classical lab and media
 dependencies, with official Python 3.12 CPU-only PyTorch wheel URLs. Other

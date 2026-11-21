@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from fipd.frontend.cloud import prepare_cloud_assets  # noqa: E402
 
 st.set_page_config(page_title="Promotion Lens", layout="wide")
+st.session_state.lens_page_routes = {"image": "/", "media": "/audio-video", "audit": "/promotion-audit"}
 page = st.navigation([
     st.Page(str(ROOT / "app.py"), title="Image analysis", default=True),
     st.Page(str(ROOT / "pages/1_ML_Lab.py"), title="ML Lab", url_path="ml-lab"),

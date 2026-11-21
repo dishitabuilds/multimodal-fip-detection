@@ -6,9 +6,9 @@ dependencies, remote fonts or Streamlit APIs are needed by this module.
 
 CSS = """
 :root {
-    --lens-background: #f5f7fa;
+    --lens-background: #f3f6f7;
     --lens-panel: #ffffff;
-    --lens-ink: #12233f;
+    --lens-ink: #172c36;
     --lens-muted: #5b6b80;
     --lens-faint: #79879a;
     --lens-line: #dce3eb;
@@ -40,12 +40,12 @@ input, textarea, button, select { font-family: inherit; }
 [data-testid="stHeader"] { background: var(--lens-background); }
 
 .block-container, [data-testid="stMainBlockContainer"] {
-    max-width: 1360px;
-    padding: 4rem 2.5rem 3.5rem;
+    max-width: 1440px;
+    padding: 3.5rem 2.5rem 3.5rem;
 }
 
 [data-testid="stSidebar"] {
-    background: #eff3f7;
+    background: #eaf0f1;
     border-right: 1px solid var(--lens-line);
 }
 
@@ -87,9 +87,9 @@ input, textarea, button, select { font-family: inherit; }
     height: 2.35rem;
     flex: 0 0 2.35rem;
     border: 1px solid var(--lens-line);
-    border-radius: 9px;
-    background: var(--lens-panel);
-    color: var(--lens-accent);
+    border-radius: 12px;
+    background: var(--lens-ink);
+    color: #ffffff;
     font-size: 0.75rem;
     font-weight: 700;
     letter-spacing: 0.03em;
@@ -128,9 +128,9 @@ input, textarea, button, select { font-family: inherit; }
     padding: 0;
     max-width: 52rem;
     color: var(--lens-ink);
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 2.25rem;
-    font-weight: 400;
+    font-family: "Segoe UI", Arial, sans-serif;
+    font-size: clamp(2rem, 3.2vw, 3rem);
+    font-weight: 650;
     letter-spacing: -0.04em;
     line-height: 1.17;
     text-wrap: balance;
@@ -171,7 +171,8 @@ input, textarea, button, select { font-family: inherit; }
     padding: 1.5rem;
     background: var(--lens-panel);
     border: 1px solid var(--lens-line);
-    border-radius: 12px;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(23, 44, 54, 0.035);
 }
 
 .section-eyebrow { margin: 0 0 0.45rem; }
@@ -338,6 +339,47 @@ hr { border-color: var(--lens-line); }
 
 #a-closer-look { scroll-margin-top: 7rem; }
 
+.workspace-topline {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 1rem; padding-bottom: 1.15rem; margin-bottom: 1.8rem;
+    border-bottom: 1px solid var(--lens-line);
+}
+.workspace-topline .hero-eyebrow { margin: 0; }
+.local-indicator { color: #11615d; font-size: .73rem; white-space: nowrap; }
+.local-indicator::before {
+    content: ''; display: inline-block; width: 6px; height: 6px;
+    margin-right: 7px; border-radius: 50%; background: #147d78;
+}
+.modality-intro { margin: .3rem 0 .8rem; color: var(--lens-muted); font-size: .8rem; }
+.workspace-nav { display: flex; gap: .7rem; margin-bottom: 1.4rem; }
+.workspace-nav a {
+    flex: 1; padding: .8rem 1rem; border: 1px solid var(--lens-line);
+    border-radius: 10px; color: var(--lens-muted); background: white;
+    font-size: .83rem; font-weight: 600; text-decoration: none;
+}
+.workspace-nav a:hover, .workspace-nav a[aria-current="page"] {
+    color: #11615d; background: #edf7f5; border-color: #a7cfc8;
+}
+[data-testid="stPageLink"] a {
+    border-radius: 9px; padding: .7rem .9rem; border: 1px solid var(--lens-line);
+    background: var(--lens-panel); transition: border-color .15s, background .15s;
+}
+[data-testid="stPageLink"] a:hover { background: var(--lens-accent-soft); border-color: #147d78; }
+[data-testid="stSidebarNav"] a[aria-current="page"] { background: #d6e8e5; }
+[data-testid="stBaseButton-primary"] { border-radius: 9px; font-weight: 600; }
+[data-testid="stMetric"] {
+    background: #f6f9f9; border: 1px solid var(--lens-line);
+    padding: .8rem 1rem; border-radius: 10px;
+}
+[data-testid="stMetricValue"] { font-size: 1.6rem; }
+[data-testid="stTabs"] [role="tablist"] { gap: 1.3rem; }
+.media-empty { min-height: 24rem; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+@media (max-width: 760px) {
+    .workspace-topline { align-items: flex-start; flex-direction: column; gap: .6rem; }
+    .media-empty { min-height: 15rem; }
+}
+
 @media (max-width: 480px) {
     .score-strip { grid-template-columns: 1fr; }
     .score-item + .score-item { padding-top: 0.8rem; border-top: 1px solid var(--lens-line); }
@@ -352,6 +394,31 @@ def header_html() -> str:
         '<div><div class="brand-name">Promotion Lens</div>'
         '<div class="brand-kicker">A multimodal research workbench</div></div></div>'
     )
+
+
+def page_header_html(eyebrow: str, title: str, description: str) -> str:
+    """Shared page introduction; escape text before placing it in static HTML."""
+    from html import escape
+
+    return (
+        '<div class="workspace-topline">'
+        f'<p class="hero-eyebrow">Promotion Lens / {escape(eyebrow)}</p>'
+        '<span class="local-indicator">Processed on this server</span></div>'
+        f'<h1 class="hero-title">{escape(title)}</h1>'
+        f'<p class="hero-description">{escape(description)}</p>'
+    )
+
+
+def navigation_html(active: str, routes: dict | None = None) -> str:
+    """Streamlit's default page URLs; links work with both local/cloud entrypoints."""
+    pages = (("image", "/", "Image + text"), ("media", "/Audio_Video", "Audio + video"),
+             ("audit", "/Promotion_Audit", "Claim evidence"))
+    links = []
+    for key, url, label in pages:
+        url = (routes or {}).get(key, url)
+        current = ' aria-current="page"' if key == active else ''
+        links.append(f'<a href="{url}" target="_self"{current}>{label}</a>')
+    return '<nav class="workspace-nav" aria-label="Review workspace">' + ''.join(links) + '</nav>'
 
 
 def empty_state_html() -> str:

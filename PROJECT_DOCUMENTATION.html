@@ -147,7 +147,7 @@
     <div class="meta">
       <span class="chip ok">Collection pipeline implemented</span>
       <span class="chip ok">Hosted research demo available</span>
-      <span class="chip">Updated 2 November 2026</span>
+      <span class="chip">Updated 22 November 2026</span>
       <span class="chip warn">Validated research checkpoint pending</span>
     </div>
   </div>
@@ -196,6 +196,7 @@
   </p>
 
   <h3>Implemented modalities and planned extension</h3>
+  <p><strong>Why the project is multimodal:</strong> the fused classifier combines visual image features with text features from the original caption and OCR. OCR feeds the text modality; it is not a third learned modality. Comparing SVM, Logistic Regression and Naive Bayes is a multi-model comparison, which is separate from multimodal fusion. The audio extension transcribes speech into text and video supplies sampled frames; no joint image&ndash;text&ndash;audio classifier has been trained or validated.</p>
   <table>
     <thead><tr><th>Modality</th><th>What it contributes</th><th>Configured encoder</th><th>Status</th></tr></thead>
     <tbody>
@@ -416,10 +417,11 @@
   </ul>
   <p>Resources initialize on analysis, not preview. Results persist until inputs or settings change. EXIF orientation and alpha compositing are consistent between preview and analysis. JSON exports retain evidence and timing. Class scores are not calibrated authenticity guarantees, regulator approval or investment advice.</p>
   <h3>Additional pages</h3>
+  <p>The 22 November interface refresh adds a shared teal and slate theme, matching page introductions and sidebar identity across all four pages, and prominent image/text, audio/video and claim-evidence navigation. The media workspace places recording input and extracted evidence side by side, adds duration/segment/frame summaries and a timestamped plain-text transcript download alongside the existing JSON export. Audio-only uploads require speech transcription to be enabled. Layout spacing and evidence panels adapt to narrow screens. Local and cloud navigation retain their respective page URLs.</p>
   <ul>
     <li><strong>ML Lab:</strong> TF-IDF text features, frozen MobileNetV3 image features and classical model comparisons. Seven local pilot artifacts demonstrate engineering only; reviewed research artifacts are still missing. See <a href="docs/ML_LAB.md">ML Lab</a>.</li>
     <li><strong>Promotion Audit:</strong> independent English wording rules, claim-level reviewer sources and dated evidence. A multi-label framing training path exists, but no validated framing model is supplied. See <a href="docs/PROMOTION_AUDIT.md">Promotion Audit</a> and <a href="docs/FRAMING_LABELS.md">framing annotations</a>.</li>
-    <li><strong>Audio Video:</strong> up to 50 MB / 120 seconds; local CPU INT8 Whisper speech, timestamped segments, sampled-frame OCR and JSON evidence. Optional lab classifiers apply to segments or frames; no validated aggregate file-level fraud verdict or learned temporal fusion is implemented. See <a href="docs/MEDIA.md">media setup and limits</a>.</li>
+    <li><strong>Audio Video:</strong> MP3, WAV, M4A, OGG and FLAC audio, plus supported video containers; up to 50 MB / 120 seconds. Local CPU INT8 Whisper speech, timestamped segments, sampled-frame OCR, TXT transcripts and JSON evidence are available. Optional lab classifiers apply to segments or frames; no validated aggregate file-level fraud verdict or learned temporal fusion is implemented. See <a href="docs/MEDIA.md">media setup and limits</a>.</li>
   </ul>
   <h3>Deployment contract</h3>
   <p>Streamlit Community Cloud uses branch <code>codex/streamlit-demo</code>, entrypoint <code>deployment/streamlit_app.py</code> and Python 3.12. Its adjacent requirements file supplies official CPU-only PyTorch wheel URLs and pins PyArrow 24.0.0 to match the cloud compatibility guard. Ordinary dependencies resolve from PyPI rather than the PyTorch index.</p>
@@ -854,7 +856,27 @@ python scripts/06_budget.py --arm fused --variant student --checkpoint data/chec
 <!-- ============================================================ -->
 <section id="log">
   <h2><span class="num">14</span>Change log</h2>
-  <p class="lede">Updated against repository code and the supplied execution guide on 2 November 2026.</p>
+  <p class="lede">Updated against repository code and local verification on 22 November 2026. Historical deployment checks retain their original dates.</p>
+
+  <div class="card">
+    <h3>22 November 2026 &mdash; Production release preparation</h3>
+    <p>The UI and audio updates are being integrated with collaborator commit <code>ba9d93b</code> from GitHub main before publishing to the configured <code>codex/streamlit-demo</code> deployment branch. The collaborator's ML Lab demonstration and bundle-loading support are retained. Its <a href="docs/RELEASE_STATUS.md">release status</a> and <a href="docs/PROFESSOR_HANDOFF.md">professor handoff</a> report a separate 47-image local experiment and its limitations; those results have not been reproduced on this Windows checkout. The ignored classifier bundle is not supplied by this source release, so those additions do not make hosted classifier inference available. Focused media-page and cloud-startup checks passed before integration.</p>
+  </div>
+
+  <div class="card">
+    <h3>22 November 2026 &mdash; UI refresh and audio readiness</h3>
+    <ul>
+      <li>Unified shared typography, palette, panel spacing and sidebar branding across image review, ML Lab, Promotion Audit and Audio Video. Added direct modality navigation with separate local/cloud routes.</li>
+      <li>Reorganized media input and evidence into two columns, added extraction summaries, a timestamped TXT download and a speech-model file-availability indicator. Disabled audio analysis when transcription is off.</li>
+      <li>Verified real local Whisper CPU INT8 transcription on an existing 11-second English FLAC clip: complete transcription, one timestamped segment, no errors; 6.22 seconds including initialization. This is an engineering readiness check, not an accuracy benchmark or lightweight-budget result. Evidence: <code>tmp/ui-refresh-audio-evidence.json</code>.</li>
+      <li>Regression verification: 47 tests passed across frontend, media, lab, audit and cloud-startup suites; the updated four-test media-page suite also passed, including the new audio-only channel guard and transcript-download assertion (48 distinct passing tests across these checks).</li>
+      <li>Chrome end-to-end check: opened the local image page, followed Audio + video navigation, uploaded <code>jfk.flac</code>, ran actual speech extraction, and downloaded the timestamped TXT transcript. The browser showed an 11-second clip, one segment, zero video frames and complete speech extraction in 5.0 seconds. This check was local; the historical incomplete cloud upload check remains unchanged.</li>
+      <li>Saved browser evidence: <a href="output/ui-refresh/audio-evidence.jpg">verified audio workspace</a>. The timestamped transcript download was opened and checked against the displayed result.</li>
+      <li>Clarified image&ndash;text fusion versus multiple classifier comparisons and audio/video preprocessing. No new classifier training or research-performance claim was introduced.</li>
+      <li>Created an editable <a href="https://www.figma.com/design/ySh9C1GEWkgIqnygeeYjwf?node-id=2-14">Figma media-workspace design</a> with local color/spacing variables and reusable navigation instances. The published button import exceeded the connector response limit, so matching local components were used.</li>
+      <li>PPT and poster generation remains deferred until the user approves the project changes and requests those deliverables. The existing report is preserved.</li>
+    </ul>
+  </div>
 
 
   <div class="card">
@@ -924,7 +946,7 @@ python scripts/06_budget.py --arm fused --variant student --checkpoint data/chec
 <footer>
   <p>
     Minor Project &middot; supervisor Dr.&nbsp;Shivangi Surati &middot;
-    Updated 2 November 2026 against repository code and available local reports.
+    Updated 22 November 2026 against repository code and available local reports.
   </p>
   <p class="small">
     Use <a href="README.md">README.md</a> for current setup commands.

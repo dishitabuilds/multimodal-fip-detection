@@ -6,6 +6,11 @@ The page works without a trained authenticity classifier. It displays speech
 segments, English wording cues and on-screen text with playback timestamps, and
 exports a JSON evidence report.
 
+The refreshed workspace also offers a timestamped plain-text transcript download,
+clip/segment/frame summaries, and side-by-side input and evidence panels. Use the
+**Audio + video** navigation link from image review. For audio-only files, enable
+**Transcribe speech**; frame extraction alone cannot analyze an audio recording.
+
 ## Installation
 
 Reuse the project's standard CPython virtual environment:

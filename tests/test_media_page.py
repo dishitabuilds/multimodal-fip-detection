@@ -37,6 +37,9 @@ def test_upload_result_survives_reruns_and_is_cleared_on_changes(monkeypatch):
     page.button(key="media_analyze").click().run()
     assert not page.exception
     assert page.session_state["media_result"]["speech_status"] == "complete"
+    transcript_download = next(item for item in page.get("download_button")
+                               if item.proto.label == "Download transcript")
+    assert transcript_download.proto.url
     page.run()
     assert "media_result" in page.session_state
     page.selectbox(key="media_language").select("Hindi").run()
@@ -61,3 +64,16 @@ def test_upload_error_is_visible_without_stale_results(monkeypatch):
     assert not page.exception
     assert page.error
     assert "media_result" not in page.session_state
+
+
+def test_audio_upload_needs_speech_even_when_video_frames_are_enabled(monkeypatch):
+    upload = io.BytesIO(wav_bytes())
+    upload.name = "promotion.wav"
+    monkeypatch.setattr(st, "file_uploader", lambda *args, **kwargs: upload)
+    page = AppTest.from_file(str(ROOT / "pages/3_Audio_Video.py")).run()
+    assert not page.button(key="media_analyze").disabled
+    page.checkbox(key="media_speech").uncheck().run()
+    assert not page.exception
+    assert page.checkbox(key="media_frames").value
+    assert page.button(key="media_analyze").disabled
+    assert any("Enable Transcribe speech" in item.value for item in page.info)

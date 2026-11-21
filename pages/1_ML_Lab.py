@@ -8,6 +8,7 @@ from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
 import streamlit as st
+from fipd.frontend.styles import CSS, header_html, page_header_html
 
 from fipd.datasets.experiments import fingerprint
 from fipd.models.classical import (
@@ -18,7 +19,10 @@ ROOT = Path(__file__).resolve().parents[1]
 RUN_ROOT = ROOT / "data/processed/lab"
 
 st.set_page_config(page_title="ML Lab · Promotion Lens", layout="wide")
-st.title("Machine learning lab")
+st.markdown(f"<style>{CSS}</style>", unsafe_allow_html=True)
+st.markdown(page_header_html("Model comparisons", "Machine learning lab",
+            "Compare text, image and fused features. Explore model outputs alongside their training provenance."),
+            unsafe_allow_html=True)
 st.caption("TF-IDF text features · MobileNetV3 image features · Linear SVM and comparison models")
 
 
@@ -40,6 +44,7 @@ def cached_ocr():
 
 
 with st.sidebar:
+    st.markdown(header_html(), unsafe_allow_html=True)
     st.header("Lab models")
     internal = st.checkbox("Show internal pilot models", value=False)
     purpose = "internal_smoke_only" if internal else "research"

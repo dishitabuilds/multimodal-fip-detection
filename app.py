@@ -14,7 +14,7 @@ from PIL import Image, UnidentifiedImageError
 import streamlit as st
 
 from fipd.frontend import analysis as analysis_service
-from fipd.frontend.styles import CSS, empty_state_html, header_html
+from fipd.frontend.styles import CSS, empty_state_html, header_html, page_header_html, navigation_html
 
 ROOT = Path(__file__).resolve().parent
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -210,11 +210,12 @@ with st.sidebar:
     st.caption("A Lightweight Multimodal Model for Detecting Fake Investment Promotions")
     st.caption("Minor project · Supervisor: Dr. Shivangi Surati")
 
-st.markdown('<p class="hero-eyebrow">Promotion Lens / Image + text review</p>'
-            '<h1 class="hero-title">Look beyond the promise.</h1>'
-            '<p class="hero-description">Bring an investment promotion into focus. '
-            'Read the text in its image, add the original caption, and inspect the evidence in one place.</p>'
-            '<div class="workflow-steps">'
+st.markdown(page_header_html("Image + text review", "Look beyond the promise.",
+            "A clearer view of investment promotions. Bring together the image, its wording "
+            "and the original caption to inspect the evidence."), unsafe_allow_html=True)
+st.markdown(navigation_html("image", st.session_state.get("lens_page_routes")), unsafe_allow_html=True)
+
+st.markdown('<div class="workflow-steps">'
             '<span class="workflow-step"><strong>01</strong> Choose a promotion</span>'
             '<span class="workflow-step"><strong>02</strong> Extract the evidence</span>'
             '<span class="workflow-step"><strong>03</strong> Review in context</span></div>', unsafe_allow_html=True)
