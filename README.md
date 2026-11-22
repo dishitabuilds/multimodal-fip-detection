@@ -4,8 +4,9 @@ Minor Project — supervisor Dr. Shivangi Surati.
 
 **ML lab track:** [Setup, SVM training, model comparisons and demo instructions](docs/ML_LAB.md).
 The lab implementation adds TF-IDF + Linear SVM, Logistic Regression and Naive Bayes,
-plus frozen MobileNetV3 image features and feature fusion. Open **ML Lab** in the
-Streamlit page navigation. A local seven-model engineering pilot is available;
+plus frozen MobileNetV3 image features and feature fusion. The lab runs separately
+from the minor project's navigation; see the setup link above.
+A local seven-model engineering pilot is available;
 validated evaluation still requires a representative human-reviewed dataset.
 
 **Audio and video:** [Local speech transcription, sampled-frame OCR and setup](docs/MEDIA.md).

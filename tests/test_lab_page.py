@@ -29,7 +29,7 @@ def lab_page(lab_data, monkeypatch):
 
     monkeypatch.setattr(Path, "glob", glob)
     st.cache_resource.clear()
-    app = AppTest.from_file(str(ROOT / "pages/1_ML_Lab.py"), default_timeout=20).run()
+    app = AppTest.from_file(str(ROOT / "scripts/ml_lab_app.py"), default_timeout=20).run()
     yield app
     st.cache_resource.clear()
 

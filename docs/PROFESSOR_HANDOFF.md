@@ -2,8 +2,11 @@
 
 ## What runs
 
-Start from the repository root with `.venv/bin/python -m streamlit run app.py`.
-Open **ML Lab**, enable **Show internal pilot models**, and use the three-case
+Start the separate ML Lab from the repository root with
+`.venv/bin/python -m streamlit run scripts/ml_lab_app.py`
+(Windows: `.\.venv\Scripts\python.exe -m streamlit run scripts/ml_lab_app.py`).
+The minor-project workbench still starts with `app.py`; its navigation excludes ML Lab.
+In the separate lab, enable **Show internal pilot models**, and use the three-case
 panel. It shows the sample image, OCR, text SVM and fused SVM margins, and a
 Needs review state for an ambiguous sample or model disagreement. For a custom
 image, use the upload and classification controls below the panel.

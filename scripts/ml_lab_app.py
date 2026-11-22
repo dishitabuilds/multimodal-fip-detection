@@ -1,4 +1,4 @@
-"""Streamlit companion for the classical ML lab track."""
+"""Standalone ML lab app, kept outside the minor project's page navigation."""
 from __future__ import annotations
 
 import hashlib

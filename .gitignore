@@ -58,3 +58,8 @@ desktop.ini
 
 # Locally packaged classifier and evaluation bundle
 demo_bundle/
+
+# Local rendering/test intermediates and legacy report source.
+# Final submission files are tracked under output/report and output/poster.
+/tmp/
+/REPORT.docx

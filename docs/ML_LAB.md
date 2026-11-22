@@ -18,11 +18,11 @@ Run from the project root in PowerShell, reusing the existing virtual environmen
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -e ".[lab,frontend,dev]"
-.\.venv\Scripts\python.exe -m streamlit run app.py
+.\.venv\Scripts\python.exe -m streamlit run scripts/ml_lab_app.py
 ```
 
-Choose **ML Lab** in Streamlit's page navigation. Research models appear only
-after a reviewed-data run. To try the saved local engineering models, enable
+The lab opens as a standalone app, outside the minor project's navigation.
+Research models appear only after a reviewed-data run. To try the saved local engineering models, enable
 **Show internal pilot models**. Choose a trained model, upload a promotion image,
 click **Read image text** (or paste an exact transcript), add its original caption
 if available, and click **Classify promotion**. Text models can also run from

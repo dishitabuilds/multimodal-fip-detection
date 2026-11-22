@@ -56,8 +56,9 @@ approximately **141 MiB of speech weights** if the media page is used.
 The tiny fused pilot checkpoint, its encoder/tokenizer assets, the seven ML Lab
 classifiers and MobileNet weights are local ignored artifacts. They are **not**
 included in this deployment setup. A fresh deployment supports OCR, rule-based
-Promotion Audit, speech transcription and sampled-frame OCR. ML Lab reports that
-no trained models are available, and research inference remains unavailable.
+Promotion Audit, speech transcription and sampled-frame OCR. ML Lab is excluded
+from the minor project's navigation and runs separately through
+`scripts/ml_lab_app.py`. Research inference remains unavailable.
 
 To include pilot scoring in a later release, explicitly package only the trusted
 pilot checkpoint and its matching assets at the paths in `README.md` and
