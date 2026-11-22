@@ -53,6 +53,14 @@ approximately **141 MiB of speech weights** if the media page is used.
 
 ## Classifiers and demo scope
 
+The main app now defaults to **Classify promotion**, using the trusted 47-image
+SVM bundle described in `README.md`, and retains **Extract text**. The integration
+works locally with the supplied bundle; it does not upload or deploy that bundle.
+On a fresh host without these files, classification is disabled with an actionable
+missing-assets message while text extraction remains available. Provision the
+matching scikit-learn 1.9.1 environment and verified bundle before enabling hosted
+classification. The notes below describe the earlier unbundled deployment.
+
 The tiny fused pilot checkpoint, its encoder/tokenizer assets, the seven ML Lab
 classifiers and MobileNet weights are local ignored artifacts. They are **not**
 included in this deployment setup. A fresh deployment supports OCR, rule-based

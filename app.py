@@ -6,6 +6,7 @@ explicitly selected, and the internal pilot is always labelled as unvalidated.
 from __future__ import annotations
 
 from html import escape
+import importlib
 import io
 import json
 from pathlib import Path
@@ -14,12 +15,26 @@ from PIL import Image, UnidentifiedImageError
 import streamlit as st
 
 from fipd.frontend import analysis as analysis_service
+
+if "multimodal" not in getattr(analysis_service, "MODES", ()):
+    analysis_service = importlib.reload(analysis_service)
 from fipd.frontend.styles import CSS, empty_state_html, header_html, page_header_html, render_navigation
 
 ROOT = Path(__file__).resolve().parent
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_IMAGE_PIXELS = 12_000_000
-MODE_LABELS = {"Extract text": "ocr", "Pilot demo": "pilot", "Research model": "research"}
+MODE_LABELS = {
+    "Lens Across": "multimodal",
+    "Lens Invest": "svm",
+    "Text Reader": "ocr",
+}
+PREVIOUS_MODE_LABELS = {
+    "Cross-format detector (120-image model)": "Lens Across",
+    "Classify promotion": "Lens Invest",
+    "Extract text": "Text Reader",
+    "Pilot demo": "Lens Invest",
+    "Research model": "Lens Invest",
+}
 SAMPLES = {
     "sample_public_figure": {
         "title": "Social feed promotion", "file": "sample_fake_1.png",
@@ -83,7 +98,7 @@ def cached_ocr(root):
 
 
 @st.cache_resource(show_spinner=False)
-def cached_classifier(root, mode, checkpoint_stamp, config_stamp):
+def cached_classifier(root, mode, checkpoint_stamp, config_stamp, asset_stamps=()):
     return analysis_service.load_classifier(Path(root), mode)
 
 
@@ -105,18 +120,87 @@ def render_result(result):
         if error.get("details"):
             st.caption(error["details"])
     else:
-        st.markdown('<span class="status-pill ready">Analysis complete</span>', unsafe_allow_html=True)
-
-    if result["mode"] == "pilot":
-        st.warning("Unvalidated pilot output. This model uses a 14-image provisional dataset "
-                   "for an internal pipeline demonstration. Its scores do not establish accuracy.")
-    for warning in result.get("warnings", []):
-        # The permanent pilot notice above carries the full limitation.
-        if not (result["mode"] == "pilot" and "pilot" in warning.lower()):
-            st.info(warning)
+        status = ("Review required" if result.get("review_reason") else
+                  "Prediction complete" if result.get("label") else "Text extraction complete")
+        st.markdown(f'<span class="status-pill ready">{status}</span>', unsafe_allow_html=True)
 
     scores = result.get("class_scores")
-    if scores:
+    if result.get("review_reason") in {"phishing_out_of_scope", "simulated_phishing_qr", "format_out_of_scope", "uncertain_prediction"} and not error:
+        heading = ("Possible phishing · Review required"
+                   if result.get("review_reason") in {"phishing_out_of_scope", "simulated_phishing_qr"}
+                   else "Ambiguous evidence · Review required")
+        st.markdown(f'<h3 class="result-heading">{heading}</h3>',
+                    unsafe_allow_html=True)
+        if result.get("review_reason") == "simulated_phishing_qr":
+            st.warning("Educational phishing simulation detected. The QR code contains simulation text rather than a live malicious link.")
+        elif result.get("review_reason") == "uncertain_prediction":
+            cal_prob = result.get("calibrated_probability", 0.5)
+            st.warning(f"The scam score is {cal_prob:.1%}, within the 45%–55% review range. Verify the sender and destination before deciding whether this is real or fake.")
+        elif result.get("review_reason") == "format_out_of_scope":
+            fmt_str = result.get("detected_format", "message").replace("_", " ")
+            st.warning(f"Detected {fmt_str} format. The 47-image baseline model cannot reliably assess this format alone; review required.")
+        else:
+            st.warning("The classifier cannot establish whether this "
+                       "message is real. Reward and action wording needs sender and link verification.")
+        with st.expander("Model details"):
+            if result.get("mode") == "multimodal":
+                st.write("Model:", "120-image Multimodal Specialist")
+                st.write("Format specialist:", result.get("detected_format", "general").replace("_", " ").title())
+                st.write("Calibrated risk score:", f"{result.get('calibrated_probability', 0.5):.1%}")
+                if result.get("decision_score") is not None:
+                    st.write("Specialist margin:", f"{result['decision_score']:+.3f}")
+                st.write("Preliminary label:", result.get("model_label", "unknown").title())
+                st.caption("Decision withheld: sender and destination cannot be verified from image pixels alone.")
+            else:
+                st.write("Raw pilot prediction:", result.get("model_label", "unknown").title())
+                st.write("Decision margin:", f"{result['decision_score']:+.3f}")
+                if result.get("detected_format"):
+                    st.write("Detected format:", result["detected_format"].replace("_", " ").title())
+                if result.get("multimodal_assessment"):
+                    mm = result["multimodal_assessment"]
+                    st.write("Format specialist model:", mm.get("model_version", "v1"))
+                    st.write("Calibrated risk score:", f"{mm.get('calibrated_probability', 0.5):.1%}")
+                st.caption("This preliminary model was trained on investment promotions, not phishing messages.")
+    elif result["mode"] == "multimodal" and not error and result.get("label"):
+        label = "Fake / Scam" if result["label"] == "fake" else "Real / Benign"
+        st.markdown(f'<h3 class="result-heading">Model prediction: {label}</h3>',
+                    unsafe_allow_html=True)
+        fmt_str = result.get("detected_format", "general").replace("_", " ").title()
+        st.caption(f"120-image multimodal model · {fmt_str} specialist · Platt-calibrated probabilities.")
+        if scores:
+            st.markdown(
+                '<div class="score-strip">'
+                f'<div class="score-item"><div class="score-label">Scam probability</div>'
+                f'<div class="score-value">{scores["fake"]:.1%}</div></div>'
+                f'<div class="score-item"><div class="score-label">Benign probability</div>'
+                f'<div class="score-value">{scores["real"]:.1%}</div></div>'
+                f'<div class="score-item"><div class="score-label">Decision threshold</div>'
+                f'<div class="score-value">{result.get("threshold", 0.5):.1%}</div></div></div>',
+                unsafe_allow_html=True,
+            )
+        with st.expander("Model details"):
+            st.write("Model:", "120-image Cross-Format Specialist")
+            st.write("Format specialist:", fmt_str)
+            st.write("Decision margin:", f"{result.get('decision_score', 0.0):+.3f}")
+            st.write("Calibrated risk:", f"{result.get('calibrated_probability', 0.5):.1%}")
+            st.write("Model version:", result.get("experiment_id", "multimodal_generalization_v1"))
+            st.caption("Probabilities are calibrated using Platt scaling on held-out validation margins.")
+    elif result["mode"] == "svm" and not error and result.get("label"):
+        label = "Fake" if result["label"] == "fake" else "Real"
+        st.markdown(f'<h3 class="result-heading">Model prediction: {label}</h3>',
+                    unsafe_allow_html=True)
+        st.caption("47-image pilot model · A content prediction, not a guarantee of investment safety.")
+        with st.expander("Model details"):
+            st.write("Model:", "Image + text Linear SVM")
+            st.write("Experiment:", result["experiment_id"])
+            st.write("Decision margin:", f"{result['decision_score']:+.3f}")
+            if result.get("detected_format"):
+                st.write("Detected format:", result["detected_format"].replace("_", " ").title())
+            if result.get("multimodal_assessment"):
+                mm = result["multimodal_assessment"]
+                st.write("Format specialist risk:", f"{mm.get('calibrated_probability', 0.5):.1%}")
+            st.caption("The signed margin selects Fake or Real. It is not a confidence percentage.")
+    elif scores and not error:
         st.markdown('<h3 class="result-heading">Model output</h3>', unsafe_allow_html=True)
         label = "Fake" if result["label"] == "fake" else "Real"
         st.write(f"Assigned class: **{label}**")
@@ -136,16 +220,25 @@ def render_result(result):
         st.markdown('<h3 class="result-heading">Text, ready to inspect</h3>', unsafe_allow_html=True)
         st.caption("Text extraction mode does not assign a fake or real label.")
 
+    for warning in result.get("warnings", []):
+        if result["mode"] not in {"svm", "multimodal"}:
+            st.info(warning)
+
     if result.get("ocr") is not None:
         st.markdown("**Extracted text**")
         if result.get("raw_ocr"):
             st.code(result["raw_ocr"], language=None, wrap_lines=True)
         else:
             st.caption("No readable text was found. Try a clearer or more tightly cropped image.")
+        if result.get("qr_payloads"):
+            st.markdown("**QR code content**")
+            for payload in result["qr_payloads"]:
+                st.code(payload, language=None, wrap_lines=True)
+            st.caption("Decoded locally; destinations are not opened or verified.")
         ocr = result["ocr"]
         line_count = len(ocr.get("lines", []))
         duration = result.get("durations_ms", {}).get("total", 0) / 1000
-        st.caption(f"{line_count} text lines · {duration:.1f} s elapsed · Local OCR")
+        st.caption(f"{line_count} text lines · {duration:.1f} s total analysis time")
 
         st.markdown("**Text cues**")
         indicators = result.get("indicators", [])
@@ -162,9 +255,12 @@ def render_result(result):
             st.caption("No configured text cues matched. This does not establish authenticity.")
 
         with st.expander("Analysis details"):
-            st.write("Mode:", next(label for label, value in MODE_LABELS.items() if value == result["mode"]))
+            mode_label = next((k for k, v in MODE_LABELS.items() if v == result["mode"]), result["mode"])
+            st.write("Mode:", mode_label)
             st.write("Model status:", result["model_status"].replace("_", " "))
             st.write("Input:", result.get("input"))
+            if result.get("detected_format"):
+                st.write("Detected layout format:", result["detected_format"].replace("_", " ").title())
             st.caption("English and Hindi OCR · The supplied caption and this image's OCR are used together.")
             st.code(result["input_fingerprint"], language=None, wrap_lines=True)
         st.download_button(
@@ -184,26 +280,32 @@ st.session_state.setdefault("caption_input", "")
 with st.sidebar:
     st.markdown(header_html(), unsafe_allow_html=True)
     st.markdown('<p class="section-eyebrow">Workspace settings</p>', unsafe_allow_html=True)
+    # Preserve the user's mode when its display name changes; clear stale results.
+    if st.session_state.get("analysis_mode") not in MODE_LABELS:
+        st.session_state.analysis_mode = PREVIOUS_MODE_LABELS.get(
+            st.session_state.get("analysis_mode"), "Lens Across")
+        clear_result()
     selected_mode = st.selectbox("Analysis mode", list(MODE_LABELS), key="analysis_mode")
     mode = MODE_LABELS[selected_mode]
     runtime = analysis_service.mode_runtime(ROOT, mode)
     if mode == "ocr":
         st.markdown('<span class="status-pill ready">Text extraction</span>', unsafe_allow_html=True)
         st.caption("Read English and Hindi text from the selected image. No classifier is used.")
-    elif mode == "pilot":
-        st.markdown('<span class="status-pill experimental">Internal pilot · Unvalidated</span>', unsafe_allow_html=True)
-        st.warning("Internal pilot: a 14-image provisional dataset. Use this mode only to explore the pipeline, "
-                   "not to measure detection accuracy.")
+    elif mode == "multimodal":
+        status = "120-image Multimodal ready" if runtime["checkpoint_available"] else "Model files missing"
+        st.markdown(f'<span class="status-pill experimental">{status}</span>', unsafe_allow_html=True)
+        st.caption("Cross-format specialist for investment promotions, phishing email screenshots, "
+                   "and SMS screenshots. Calibrated risk with human review triggers.")
     else:
-        status = "Checkpoint present" if runtime["checkpoint_available"] else "Checkpoint unavailable"
-        st.markdown(f'<span class="status-pill pending">{status}</span>', unsafe_allow_html=True)
-        st.caption("Uses a compatible image + text research checkpoint. "
-                   "Compatibility is checked before inference.")
+        status = "47-image SVM ready" if runtime["checkpoint_available"] else "Model files missing"
+        st.markdown(f'<span class="status-pill experimental">{status}</span>', unsafe_allow_html=True)
+        st.caption("Predict Fake or Real using image text and visual features. "
+                   "Preliminary pilot model; review the evidence alongside its prediction.")
     st.divider()
     with st.expander("How it works"):
         st.write("1. Choose one promotion image.")
         st.write("2. Add its original caption, if available.")
-        st.write("3. Extract the text and inspect the evidence.")
+        st.write("3. Analyze the promotion to see its prediction and extracted evidence.")
         st.caption("Images are analyzed on this machine. Uploads are not added to the dataset. "
                    "OCR reads local model files; no automatic model downloads occur.")
     st.button("Clear workspace", key="reset_input", on_click=reset_input, use_container_width=True)
@@ -211,14 +313,14 @@ with st.sidebar:
     st.caption("Minor project · Supervisor: Dr. Shivangi Surati")
 
 st.markdown(page_header_html("Image + text review", "Look beyond the promise.",
-            "A clearer view of investment promotions. Bring together the image, its wording "
-            "and the original caption to inspect the evidence."), unsafe_allow_html=True)
+            "Get a Fake or Real model prediction, then inspect the image, extracted wording "
+            "and original caption together."), unsafe_allow_html=True)
 render_navigation(ROOT, "image")
 
 st.markdown('<div class="workflow-steps">'
             '<span class="workflow-step"><strong>01</strong> Choose a promotion</span>'
             '<span class="workflow-step"><strong>02</strong> Extract the evidence</span>'
-            '<span class="workflow-step"><strong>03</strong> Review in context</span></div>', unsafe_allow_html=True)
+            '<span class="workflow-step"><strong>03</strong> View prediction and evidence</span></div>', unsafe_allow_html=True)
 
 left, right = st.columns([1, 1.05], gap="large")
 with left, st.container(border=False, key="input_panel"):
@@ -269,14 +371,14 @@ with left, st.container(border=False, key="input_panel"):
                            placeholder="Paste the text that accompanied this promotion…",
                            help="Use the original caption. Sample descriptions are not supplied to the model.")
     checkpoint_stamp, config_stamp = stamp(runtime["checkpoint_path"]), stamp(runtime["config_path"])
+    asset_stamps = tuple(stamp(path) for path in runtime.get("asset_paths", []))
     identity = ((source_id, analysis_service.input_fingerprint(image, caption, mode),
-                 checkpoint_stamp, config_stamp) if image is not None else None)
+                 checkpoint_stamp, config_stamp, asset_stamps) if image is not None else None)
     if st.session_state.get("analysis_identity") != identity:
         clear_result()
     if mode != "ocr" and not runtime["checkpoint_available"]:
-        st.warning("The selected model checkpoint is unavailable. Choose Extract text to inspect OCR evidence.")
-    elif mode == "pilot":
-        st.warning("Pilot demo · Unvalidated scores from a 14-image provisional dataset.")
+        st.warning("Classification model files are missing. Restore the required model files, "
+                   "or choose Text Reader to inspect OCR evidence.")
     else:
         st.caption(f"Selected mode: {selected_mode}")
     run = st.button("Analyze promotion", key="analyze", type="primary", use_container_width=True,
@@ -285,18 +387,19 @@ with left, st.container(border=False, key="input_panel"):
         with st.spinner("Reading the image and assembling the evidence…"):
             result = analysis_service.analyze_image(
                 image, caption, mode, ROOT, ocr_loader=lambda: cached_ocr(str(ROOT)),
-                model_loader=lambda: cached_classifier(str(ROOT), mode, checkpoint_stamp, config_stamp),
+                model_loader=lambda: cached_classifier(str(ROOT), mode, checkpoint_stamp, config_stamp,
+                                                       asset_stamps),
             )
         st.session_state.analysis_result = result
         st.session_state.analysis_identity = identity
     if st.session_state.get("analysis_result"):
-        st.markdown("[View analysis ↓](#a-closer-look)")
+        st.markdown("[View analysis ↓](#analysis-result)")
 
 with right, st.container(border=False, key="results_panel"):
     result = st.session_state.get("analysis_result")
     evidence_note = ("Evidence for the current image and caption." if result
-                     else "Extracted text and review cues will appear here.")
-    st.markdown('<p class="section-eyebrow">02 / Evidence</p><h2 class="panel-title">A closer look</h2>'
+                     else "Your prediction and extracted evidence will appear here.")
+    st.markdown('<p class="section-eyebrow">02 / Result</p><h2 class="panel-title">Analysis result</h2>'
                 f'<p class="panel-note">{evidence_note}</p>', unsafe_allow_html=True)
     if result:
         render_result(result)

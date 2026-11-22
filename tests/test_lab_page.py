@@ -25,6 +25,10 @@ def lab_page(lab_data, monkeypatch):
             return original(run.parent, pattern, *args, **kwargs)
         if path == ROOT / "data/processed/lab/internal_smoke_only":
             return iter([])
+        if path == ROOT / "demo_bundle/models":
+            # This fixture intentionally tests an empty pilot inventory, regardless
+            # of whether the developer has the real presentation bundle locally.
+            return iter([])
         return original(path, pattern, *args, **kwargs)
 
     monkeypatch.setattr(Path, "glob", glob)

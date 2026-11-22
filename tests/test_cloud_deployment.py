@@ -81,7 +81,7 @@ def test_cloud_entrypoint_preserves_the_existing_image_page(monkeypatch):
     root = Path(__file__).resolve().parents[1]
     app = AppTest.from_file(str(root / "deployment/streamlit_app.py")).run(timeout=30)
     assert not app.exception
-    assert app.selectbox(key="analysis_mode").value == "Extract text"
+    assert app.selectbox(key="analysis_mode").value == "Lens Across"
     assert [item.proto.label for item in app.get("page_link")] == [
         "Image + text", "Audio + video", "Claim evidence"]
     st.cache_resource.clear()

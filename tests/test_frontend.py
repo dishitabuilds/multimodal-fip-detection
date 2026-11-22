@@ -62,7 +62,7 @@ def assert_no_prediction(app):
     rendered = "\n".join(item.value for item in app.markdown).lower()
     assert "likely fake" not in rendered
     assert "likely real" not in rendered
-    assert "model prediction" not in rendered
+    assert "model prediction:" not in rendered
     assert 'class="score-strip"' not in rendered
     assert "assigned class:" not in rendered
 
@@ -76,11 +76,15 @@ def clear_resource_cache():
 
 @pytest.fixture
 def workspace(monkeypatch):
-    presence = {"research": False, "pilot": False}
-    stamps = {"research": 1, "pilot": 1}
+    presence = {"research": False, "pilot": False, "svm": False, "multimodal": False}
+    stamps = {"research": 1, "pilot": 1, "svm": 1, "multimodal": 1}
     paths = {
         (ROOT / analysis_service.RESEARCH_CHECKPOINT_RELATIVE).absolute(): "research",
         (ROOT / analysis_service.PILOT_CHECKPOINT_RELATIVE).absolute(): "pilot",
+        (ROOT / analysis_service.MULTIMODAL_MODEL_RELATIVE).absolute(): "multimodal",
+        **{(ROOT / relative).absolute(): "svm" for relative in
+           (analysis_service.SVM_CHECKPOINT_RELATIVE, analysis_service.SVM_WEIGHTS_RELATIVE,
+            analysis_service.SVM_MANIFEST_RELATIVE, analysis_service.SVM_EXPERIMENT_RELATIVE)},
     }
     for method in ("exists", "is_file"):
         original = getattr(Path, method)
@@ -126,14 +130,22 @@ def workspace(monkeypatch):
                              else "unvalidated_internal_pilot" if mode == "pilot"
                              else "compatible_checkpoint"),
             "purpose": {"ocr": "text_extraction_only", "pilot": "internal_smoke_only",
-                        "research": "research_inference"}[mode],
+                        "research": "research_inference", "svm": "internal_smoke_only",
+                        "multimodal": "cross_format_specialist"}[mode],
             "raw_ocr": ("" if failures["code"] == "ocr_failure" else
                         "Partial OCR from the current image" if failures["code"] else OCR_TEXT),
             "ocr": (None if failures["code"] == "ocr_failure" else
                     {"backend": "easyocr", "lines": [OCR_TEXT], "mean_confidence": 0.9,
                      "elapsed_ms": 10.0, "script_profile": {"latin": 1.0}}),
-            "indicators": [], "class_scores": {"real": 0.22, "fake": 0.78} if prediction else None,
-            "threshold": 0.5 if prediction else None, "label": "fake" if prediction else None,
+            "indicators": [], "class_scores": None if mode == "svm" else
+                {"real": 0.22, "fake": 0.78} if prediction else None,
+            "decision_score": 0.202 if prediction and mode in {"svm", "multimodal"} else None,
+            "score_kind": "decision_margin" if prediction and mode == "svm" else "calibrated_probability" if prediction and mode == "multimodal" else None,
+            "experiment_id": analysis_service.SVM_EXPERIMENT_ID if mode == "svm" else "multimodal_generalization_v1" if mode == "multimodal" else None,
+            "threshold": 0.0 if prediction and mode == "svm" else 0.5 if prediction else None,
+            "label": "fake" if prediction else None,
+            "detected_format": "investment_graphic" if mode == "multimodal" else None,
+            "calibrated_probability": 0.78 if prediction and mode == "multimodal" else None,
             "durations_ms": {"ocr_load": 1.0, "ocr": 10.0, "classifier_load": 2.0,
                              "inference": 3.0, "total": 16.0},
             "input_fingerprint": analysis_service.input_fingerprint(image, caption, mode),
@@ -159,6 +171,8 @@ def workspace(monkeypatch):
 def start():
     app = AppTest.from_file(str(APP), default_timeout=30).run()
     assert not app.exception
+    # Existing input/OCR regressions deliberately exercise the extraction mode.
+    app.selectbox(key="analysis_mode").select("Text Reader").run()
     return app
 
 
@@ -182,7 +196,7 @@ def analyze(app):
 def test_preview_and_navigation_work_without_models(workspace):
     app = start()
     assert app.radio(key="input_source").value == "Upload"
-    assert app.selectbox(key="analysis_mode").value == "Extract text"
+    assert app.selectbox(key="analysis_mode").value == "Text Reader"
     assert app.button(key="analyze").disabled
     assert not result(app)
     workspace.uploads["upload_0"] = png_bytes("red")
@@ -248,7 +262,7 @@ def test_ocr_only_works_without_checkpoint_and_has_no_prediction(workspace):
 
 def test_results_persist_only_for_unchanged_inputs_and_checkpoint(workspace):
     workspace.uploads["upload_0"] = png_bytes("red")
-    workspace.presence["pilot"] = True
+    workspace.presence["svm"] = True
     app = start()
     analyze(app)
     initial = deepcopy(result(app))
@@ -262,40 +276,113 @@ def test_results_persist_only_for_unchanged_inputs_and_checkpoint(workspace):
     app.run()
     assert not result(app)
     analyze(app)
-    app.selectbox(key="analysis_mode").select("Pilot demo").run()
+    app.selectbox(key="analysis_mode").select("Lens Invest").run()
     assert not result(app)
     analyze(app)
-    assert result(app)["mode"] == "pilot"
-    workspace.stamps["pilot"] += 1
+    assert result(app)["mode"] == "svm"
+    workspace.stamps["svm"] += 1
     app.run()
     assert not result(app)
     assert not downloads(app)
 
 
-def test_pilot_mode_warns_before_and_after_analysis(workspace):
-    workspace.presence["pilot"] = True
-    app = select_sample(start())
-    app.selectbox(key="analysis_mode").select("Pilot demo").run()
-    assert any("provisional" in warning.value.lower() for warning in app.warning)
-    assert any("pilot" in item.value.lower() for item in app.markdown)
+def test_svm_mode_should_show_clear_prediction_without_probability(workspace):
+    workspace.presence["svm"] = True
+    app = AppTest.from_file(str(APP), default_timeout=30).run()
+    assert app.selectbox(key="analysis_mode").value == "Lens Across"
+    assert app.selectbox(key="analysis_mode").options == [
+        "Lens Across", "Lens Invest", "Text Reader"
+    ]
+    app.selectbox(key="analysis_mode").select("Lens Invest").run()
+    select_sample(app)
     analyze(app)
-    assert workspace.calls[-1]["mode"] == "pilot"
-    assert result(app)["model_status"] == "unvalidated_internal_pilot"
+    assert workspace.calls[-1]["mode"] == "svm"
     assert result(app)["purpose"] == "internal_smoke_only"
-    assert any("pilot" in warning.value.lower() for warning in app.warning)
+    assert result(app)["class_scores"] is None
+    rendered = '\n'.join(item.value for item in app.markdown)
+    assert "Model prediction: Fake" in rendered
+    assert 'class="score-strip"' not in rendered
+    assert any('47-image pilot' in item.value for item in app.caption)
     assert downloads(app)
 
 
-def test_missing_research_checkpoint_disables_only_research(workspace):
+def test_multimodal_mode_should_show_calibrated_probabilities_and_format_specialist(workspace):
+    workspace.presence["multimodal"] = True
+    workspace.presence["svm"] = True
     app = select_sample(start())
-    app.selectbox(key="analysis_mode").select("Research model").run()
+    app.selectbox(key="analysis_mode").select("Lens Across").run()
+    assert not app.exception
+    analyze(app)
+    assert workspace.calls[-1]["mode"] == "multimodal"
+    assert result(app)["purpose"] == "cross_format_specialist"
+    assert result(app)["class_scores"] == {"real": 0.22, "fake": 0.78}
+    rendered = '\n'.join(item.value for item in app.markdown)
+    assert "Model prediction: Fake / Scam" in rendered
+    assert 'class="score-strip"' in rendered
+    assert "Scam probability" in rendered
+    assert downloads(app)
+
+
+def test_multimodal_uncertain_score_shows_review_instead_of_binary_label(workspace):
+    workspace.presence["multimodal"] = True
+    workspace.presence["svm"] = True
+    original = workspace.analyze.side_effect
+
+    def uncertain(*args, **kwargs):
+        payload = original(*args, **kwargs)
+        payload.update(label=None, model_label="fake", review_reason="uncertain_prediction",
+                       calibrated_probability=0.52,
+                       class_scores={"fake": 0.52, "real": 0.48})
+        return payload
+
+    workspace.analyze.side_effect = uncertain
+    app = select_sample(start())
+    app.selectbox(key="analysis_mode").select("Lens Across").run()
+    analyze(app)
+    assert not app.exception
+    assert result(app)["label"] is None
+    assert result(app)["review_reason"] == "uncertain_prediction"
+    rendered = '\n'.join(item.value for item in app.markdown)
+    assert "Review required" in rendered
+    assert "Model prediction: Fake" not in rendered
+    assert any("45%–55%" in item.value for item in app.warning)
+
+
+def test_missing_svm_bundle_disables_only_classification(workspace):
+    app = select_sample(start())
+    app.selectbox(key="analysis_mode").select("Lens Invest").run()
     assert not app.exception
     assert app.button(key="analyze").disabled
-    assert any("checkpoint" in item.value.lower() for item in [*app.info, *app.warning])
+    assert any("model files" in item.value.lower() for item in [*app.info, *app.warning])
     workspace.analyze.assert_not_called()
-    app.selectbox(key="analysis_mode").select("Extract text").run()
+    app.selectbox(key="analysis_mode").select("Text Reader").run()
     assert not app.button(key="analyze").disabled
     assert_no_prediction(app)
+
+
+def test_svm_error_should_clear_previous_prediction_and_keep_current_ocr(workspace):
+    workspace.presence['svm'] = True
+    app = select_sample(start())
+    app.selectbox(key='analysis_mode').select('Lens Invest').run()
+    analyze(app)
+    assert result(app)['label'] == 'fake'
+    workspace.failures['code'] = 'inference_failure'
+    app.text_area(key='caption_input').input('Changed caption').run()
+    analyze(app)
+    assert result(app)['status'] == 'error'
+    assert result(app)['label'] is None
+    assert_no_prediction(app)
+    assert app.error and downloads(app)
+
+
+def test_old_pilot_session_should_migrate_to_svm_without_stale_result(workspace):
+    app = AppTest.from_file(str(APP), default_timeout=30)
+    app.session_state['analysis_mode'] = 'Pilot demo'
+    app.session_state['analysis_result'] = {'label': 'real'}
+    app.run()
+    assert not app.exception
+    assert app.selectbox(key='analysis_mode').value == 'Lens Invest'
+    assert not result(app)
 
 
 @pytest.mark.parametrize("error_code", ["ocr_failure", "inference_failure"])

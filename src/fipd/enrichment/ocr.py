@@ -188,12 +188,24 @@ class EasyOCREngine(OCREngine):
             if local_dir.exists():
                 model_dir = str(local_dir.resolve())
 
+        reader_kwargs = {
+            "gpu": self.options.get("gpu", False),
+            "model_storage_directory": model_dir,
+            "download_enabled": self.options.get("download_enabled", True),
+            "verbose": False,
+        }
+        if "user_network_directory" in self.options:
+            reader_kwargs["user_network_directory"] = self.options["user_network_directory"]
+        elif model_dir and Path(model_dir).name == "easyocr":
+            user_net = Path(model_dir) / "user_network"
+            try:
+                user_net.mkdir(parents=True, exist_ok=True)
+                reader_kwargs["user_network_directory"] = str(user_net)
+            except Exception:
+                pass
         self._engine = easyocr.Reader(
             self.languages,
-            gpu=self.options.get("gpu", False),
-            model_storage_directory=model_dir,
-            download_enabled=self.options.get("download_enabled", True),
-            verbose=False,
+            **reader_kwargs,
         )
 
     def _run(self, image_path: str) -> tuple[list[str], list[float]]:

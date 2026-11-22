@@ -30,9 +30,9 @@ text, then compares **text-only, image-only and fused** models.
 The repository now includes a **Streamlit frontend**, an AMFI legitimate-creative
 collector, a resumable collection/curation pipeline and model/training code.
 **A validated research checkpoint and research evaluation results are not included.**
-The frontend supports uploads, sample previews and default OCR independently of
-a classifier checkpoint. An internal Pilot demo is available explicitly;
-Research model analysis requires the compatible checkpoint described below.
+The frontend supports uploads, sample previews and OCR. Its default **Classify
+promotion** mode uses the supplied 47-image SVM pilot bundle; **Extract text**
+works independently of that classifier. Predictions remain preliminary pilot outputs.
 
 See [PROJECT_DOCUMENTATION.html](PROJECT_DOCUMENTATION.html) for the design,
 module reference, limitations and change log.
@@ -122,28 +122,45 @@ image. Captions are optional and should contain the original accompanying
 post text. Demonstration captions start blank; source descriptions stay
 separate from model inputs. These examples are not a held-out test set.
 
-The interface separates three modes:
+The interface provides three modes:
 
-- **OCR** is the default. It extracts image text and shows descriptive text
-  cues without a classifier or research checkpoint. OCR loads only prepared
-  local EasyOCR files from `data/models/easyocr/`, with downloads disabled.
-  Missing files produce an unavailable message; image previews still work.
-- **Pilot demo** is an explicit opt-in to the internal engineering model.
-  It uses a **14-image provisionally AI-labelled dataset** (7 train, 4 validation,
-  3 test), using tiny
-  randomly initialized encoders. Its scores are unvalidated demonstration
-  outputs, not research accuracy or evidence that a promotion is genuine.
-  The local checkpoint is
-  `data/checkpoints/student/internal-ai-pilot-20261025/fused_seed42.pt`,
-  with `configs/tiny-smoke.yaml`. These ignored artifacts are absent from a
-  fresh clone. See [the internal pilot record](docs/PILOT_RUN.md).
-- **Research model** requires a compatible checkpoint at
-  `data/checkpoints/fused_seed42.pt` and locally cached matching
-  encoder/tokenizer assets. No validated research checkpoint is supplied.
-  The artifact must come from the current student fused training runner,
-  match `configs/model.yaml`, and include `state_dict`, a validation-selected
-  `threshold`, and architecture/text/input-pipeline provenance.
-  Incompatible, metadata-free legacy and internal-pilot artifacts are rejected.
+- **Classify promotion** (default) runs OCR, saved TF-IDF preprocessing, frozen
+  MobileNetV3-Small features and the fused Linear SVM from
+  `visual-source-holdout-20261113` (31 training / 6 validation / 10 test images).
+  It displays **Model prediction: Fake / Real** first, followed by evidence.
+  The signed SVM margin is available under Model details; it is not a confidence
+  percentage. JSON exports include the experiment ID and classifier SHA-256.
+- **Cross-format detector (120-image model)** is powered by the 120-image multimodal
+  generalization specialist model (`data/processed/multimodal_generalization/model.joblib`).
+  It automatically detects layout formats (investment promotion, email screenshot,
+  or SMS screenshot), routes inference to calibrated format specialists, displays
+  Platt-calibrated scam and benign class probabilities. Scores from 45% through
+  55% display **Review required**; scores below 45% display Real and scores
+  above 55% display Fake.
+- **Extract text** runs OCR without classification. It remains available if
+  classifier files are absent. OCR reads prepared local EasyOCR files from
+  `data/models/easyocr/`, with downloads disabled.
+
+For classification, supply the original local bundle with these files:
+
+```text
+demo_bundle/manifest.json
+demo_bundle/experiment.json
+demo_bundle/models/fused_linear_svm.joblib
+demo_bundle/weights/mobilenet_v3_small-047dcff4.pth
+```
+
+The loader checks packaged hashes, experiment identity, split counts and matching
+preprocessing/encoder metadata before inference. Use only trusted project bundles;
+joblib files deserialize Python objects. The supplied model requires scikit-learn
+**1.9.1**, pinned in `requirements-frontend.txt`. Do not rename a transformer `.pt`
+checkpoint to replace the SVM artifact. The legacy 14-image Pilot demo and Research
+model choices are no longer exposed in the main app.
+
+These ignored model files are not included in a fresh Git clone or automatically
+downloaded. Without the bundle, choose Extract text or restore the supplied bundle.
+Hosted classification additionally requires provisioning the same trusted assets;
+this local integration does not deploy them.
 
 Previewing images or changing modes does not initialize models. Analysis uses
 local assets and does not automatically download model weights or tokenizer

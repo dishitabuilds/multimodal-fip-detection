@@ -1,3 +1,5 @@
 # Streamlit demo, with its inference and EasyOCR dependencies.
 # Run from the repository root in a standard CPython virtual environment.
 -e .[frontend]
+# Saved 47-image SVM artifacts require their training version.
+scikit-learn==1.9.1
