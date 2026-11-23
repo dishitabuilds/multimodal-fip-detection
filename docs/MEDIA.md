@@ -6,6 +6,15 @@ The page works without a trained authenticity classifier. It displays speech
 segments, English wording cues and on-screen text with playback timestamps, and
 exports a JSON evidence report.
 
+The page opens with a bundled **Demo video**: an 18-second fictional classroom
+promotion with synthetic English narration and readable claim cards. Click
+**Analyze audio / video** to run the same speech/OCR pipeline used for uploads.
+Show the timestamped transcript, return-promise/urgency wording cues and evidence
+downloads. **Demo audio** provides the narration alone; select **Upload** to
+analyze your own recording. The demo contains no
+precomputed results and demonstrates integration rather than detection accuracy.
+Its source and rebuild instructions are in `test_samples/media/README.md`.
+
 The refreshed workspace also offers a timestamped plain-text transcript download,
 clip/segment/frame summaries, and side-by-side input and evidence panels. Use the
 **Audio + video** navigation link from image review. For audio-only files, enable

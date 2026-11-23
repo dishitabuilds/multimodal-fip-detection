@@ -95,7 +95,7 @@ with st.sidebar:
     st.caption("Audio segments use text-only classifiers. Image and fused classifiers apply to sampled video frames.")
 
 st.markdown('<div class="workflow-steps">'
-            '<span class="workflow-step"><strong>01</strong> Upload a recording</span>'
+            '<span class="workflow-step"><strong>01</strong> Choose a recording</span>'
             '<span class="workflow-step"><strong>02</strong> Extract speech + text</span>'
             '<span class="workflow-step"><strong>03</strong> Review timestamped evidence</span></div>',
             unsafe_allow_html=True)
@@ -107,12 +107,27 @@ with input_panel:
                 '<p class="panel-note">A voice message, promotional recording or short video.</p>',
                 unsafe_allow_html=True)
 with input_panel:
-    upload = st.file_uploader("Upload an audio or video promotion",
-                              type=sorted(ext[1:] for ext in AUDIO_EXTENSIONS | VIDEO_EXTENSIONS),
-                              key="media_upload")
-content = upload.getvalue() if upload is not None else b""
+    source = st.radio("Recording source", ["Demo video", "Demo audio", "Upload"],
+                      horizontal=True, key="media_input_source")
+    content, filename = b"", ""
+    if source != "Upload":
+        st.info("Fictional classroom example with a synthetic narrator. "
+                "Analyze it to extract real speech, frame text and wording cues.")
+        sample_path = ROOT / "test_samples/media" / (
+            "promotion_demo.mp4" if source == "Demo video" else "demo_narration.wav")
+        try:
+            content, filename = sample_path.read_bytes(), sample_path.name
+        except OSError:
+            st.error("The demo recording is unavailable. Upload a recording to continue.")
+        st.caption("English demo · Guaranteed returns, doubling money and urgency. "
+                   "Leave Optional classifier on Extract and audit wording.")
+    else:
+        upload = st.file_uploader("Upload an audio or video promotion",
+                                  type=sorted(ext[1:] for ext in AUDIO_EXTENSIONS | VIDEO_EXTENSIONS),
+                                  key="media_upload")
+        if upload is not None:
+            content, filename = upload.getvalue(), upload.name
 digest = hashlib.sha256(content).hexdigest() if content else ""
-filename = upload.name if upload is not None else ""
 if st.session_state.get("media_source") != (digest, filename):
     st.session_state.media_source = (digest, filename)
     st.session_state.media_caption = ""
@@ -226,6 +241,6 @@ with evidence_panel:
                     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">'
                     '<path d="M4 10v4m4-7v10m4-14v18m4-14v10m4-7v4"/></svg></div>'
                     '<div class="result-heading">Every claim has a context.</div>'
-                    '<p class="result-description">Upload a clip to see timestamped speech, '
+                    '<p class="result-description">Analyze the demo or upload a clip to see timestamped speech, '
                     'on-screen text and wording cues together.</p></div>', unsafe_allow_html=True)
         st.caption("Wording analysis works without a trained classifier.")

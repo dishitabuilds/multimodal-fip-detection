@@ -13,6 +13,12 @@ workbench; deployment does not establish classifier accuracy.
 - App URL: `promotion-lens-demo.streamlit.app`.
 - No collection API key is needed for the demo.
 
+The 23 November media-demo update adds a bundled fictional video and its synthetic
+audio narration. Audio + video opens with **Demo video** selected; choose **Demo
+audio** for speech-only analysis or **Upload** for your own recording. Analyze
+runs real transcription, frame OCR and wording rules; no precomputed results or
+trained authenticity-classifier files are needed for this demo.
+
 The 22 November 2026 release adds the shared UI refresh, direct image/audio/audit
 navigation, the recording/evidence layout and timestamped TXT transcript export.
 Publish the integrated source to `codex/streamlit-demo` to trigger Community Cloud;
