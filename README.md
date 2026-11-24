@@ -1,4 +1,13 @@
-# A Lightweight Multimodal Model for Detecting Fake Investment Promotions
+# Promotion Lens — Multimodal Promotion Analysis
+
+A research workbench for investment-promotion images, email/SMS screenshots,
+claim evidence, and audio/video transcription.
+
+[Hosted demo](https://promotion-lens-demo.streamlit.app) ·
+[Deployment scope and asset setup](docs/DEPLOYMENT.md) ·
+[Local setup](#run-promotion-lens)
+
+Research title: **A Lightweight Multimodal Model for Detecting Fake Investment Promotions**.
 
 Minor Project — supervisor Dr. Shivangi Surati.
 
@@ -30,14 +39,23 @@ text, then compares **text-only, image-only and fused** models.
 The repository now includes a **Streamlit frontend**, an AMFI legitimate-creative
 collector, a resumable collection/curation pipeline and model/training code.
 **A validated research checkpoint and research evaluation results are not included.**
-The frontend supports uploads, sample previews and OCR. Its default **Classify
-promotion** mode uses the supplied 47-image SVM pilot bundle; **Extract text**
-works independently of that classifier. Predictions remain preliminary pilot outputs.
+The frontend supports uploads, sample previews and OCR. Its **Lens Invest** mode uses the supplied 47-image SVM pilot bundle;
+**Lens Across** selects the 120-image cross-format specialist path by default,
+and **Text Reader** runs OCR independently of either classifier. Predictions remain preliminary pilot outputs.
 
 See [PROJECT_DOCUMENTATION.html](PROJECT_DOCUMENTATION.html) for the design,
 module reference, limitations and change log.
 
-## Current implementation work (26 October 2026)
+## Latest interface and model paths
+
+The 22 November 2026 source update labels the analysis modes **Lens Across**
+(120-image cross-format model), **Lens Invest** (47-image image/text SVM pilot),
+and **Text Reader** (OCR only). See [generalization work](docs/GENERALIZATION_WORK.md).
+The training assets are not committed, so a fresh clone cannot reproduce
+classification without the corresponding trusted bundles. This review does not
+establish hosted classifier availability or new evaluation results.
+
+## Historical implementation checkpoint (26 October 2026)
 
 See [DATASET.md](DATASET.md) for actual data populations and review commands,
 and [docs/REMAINING_WORK.md](docs/REMAINING_WORK.md) for the updated checklist.
@@ -124,20 +142,20 @@ separate from model inputs. These examples are not a held-out test set.
 
 The interface provides three modes:
 
-- **Classify promotion** (default) runs OCR, saved TF-IDF preprocessing, frozen
+- **Lens Invest** (47-image pilot) runs OCR, saved TF-IDF preprocessing, frozen
   MobileNetV3-Small features and the fused Linear SVM from
   `visual-source-holdout-20261113` (31 training / 6 validation / 10 test images).
   It displays **Model prediction: Fake / Real** first, followed by evidence.
   The signed SVM margin is available under Model details; it is not a confidence
   percentage. JSON exports include the experiment ID and classifier SHA-256.
-- **Cross-format detector (120-image model)** is powered by the 120-image multimodal
+- **Lens Across** (default, 120-image model) is powered by the 120-image multimodal
   generalization specialist model (`data/processed/multimodal_generalization/model.joblib`).
   It automatically detects layout formats (investment promotion, email screenshot,
   or SMS screenshot), routes inference to calibrated format specialists, displays
   Platt-calibrated scam and benign class probabilities. Scores from 45% through
   55% display **Review required**; scores below 45% display Real and scores
   above 55% display Fake.
-- **Extract text** runs OCR without classification. It remains available if
+- **Text Reader** runs OCR without classification. It remains available if
   classifier files are absent. OCR reads prepared local EasyOCR files from
   `data/models/easyocr/`, with downloads disabled.
 
@@ -158,7 +176,7 @@ checkpoint to replace the SVM artifact. The legacy 14-image Pilot demo and Resea
 model choices are no longer exposed in the main app.
 
 These ignored model files are not included in a fresh Git clone or automatically
-downloaded. Without the bundle, choose Extract text or restore the supplied bundle.
+downloaded. Without the bundle, choose Text Reader or restore the supplied bundle.
 Hosted classification additionally requires provisioning the same trusted assets;
 this local integration does not deploy them.
 
